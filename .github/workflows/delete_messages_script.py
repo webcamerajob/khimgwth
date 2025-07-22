@@ -9,7 +9,7 @@ import subprocess # Добавляем для выполнения команд 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json')
 DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
-GITHUB_TOKEN = os.getenv('GITHUB_TOKEN') # Получаем GitHub Token
+GH_TOKEN = os.getenv('GH_TOKEN') # Получаем GitHub Token
 GIT_COMMIT_EMAIL = os.getenv('GIT_COMMIT_EMAIL', 'github-actions[bot]@users.noreply.github.com') # Email для коммита
 GIT_COMMIT_NAME = os.getenv('GIT_COMMIT_NAME', 'github-actions[bot]') # Имя для коммита
 
@@ -106,7 +106,7 @@ async def delete_messages():
 
             # Отправляем изменения на GitHub
             # Используем токен для аутентификации
-            repo_url = f"https://{GITHUB_TOKEN}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git"
+            repo_url = f"https://{GH_TOKEN}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git"
             subprocess.run(['git', 'push', repo_url], check=True)
             print('Изменения успешно отправлены на GitHub.')
 
