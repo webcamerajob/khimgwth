@@ -149,31 +149,38 @@ def round_rectangle(draw, xy, radius, fill):
 
 def get_font(font_size: int):
     """
-    Пытается загрузить шрифт, подходящий для кириллицы.
+    Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
     Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # Попробуйте загрузить Arial (предполагая, что он находится рядом со скриптом или установлен)
+    # 1. Попробуйте загрузить NotoColorEmoji.ttf (для эмодзи)
     try:
-        font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-        logger.info("Шрифт 'arial.ttf' успешно загружен.")
+        font = ImageFont.truetype("NotoColorEmoji.ttf", font_size, encoding="UTF-8")
+        logger.info("Шрифт 'NotoColorEmoji.ttf' успешно загружен (с поддержкой эмодзи).")
         return font
     except IOError:
-        logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-        # Попробуйте DejaVuSans, который часто предустановлен в Linux
+        logger.warning("Шрифт 'NotoColorEmoji.ttf' не найден. Попытка загрузить 'arial.ttf'.")
+        # 2. Попробуйте загрузить Arial.ttf (для кириллицы, если NotoColorEmoji не найден)
         try:
-            font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
-            logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
+            font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+            logger.info("Шрифт 'arial.ttf' успешно загружен.")
             return font
         except IOError:
-            logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Попытка загрузить стандартный шрифт Pillow.")
-            # Используйте стандартный шрифт Pillow
-            font = ImageFont.load_default()
-            logger.warning("Используется стандартный шрифт Pillow. Возможно, не все символы будут отображены корректно.")
-            return font
+            logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
+            # 3. Попробуйте DejaVuSans.ttf (часто предустановлен в Linux)
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
+                logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
+                return font
+            except IOError:
+                logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
+                # 4. В крайнем случае используйте стандартный шрифт Pillow
+                font = ImageFont.load_default()
+                logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
+                return font
     except Exception as e:
         logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
         font = ImageFont.load_default()
-        logger.warning("Используется стандартный шрифт Pillow. Возможно, не все символы будут отображены корректно.")
+        logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
         return font
 
 
