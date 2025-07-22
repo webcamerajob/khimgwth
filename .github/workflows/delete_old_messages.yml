@@ -1,113 +1,106 @@
-name: Delete Old Weather Messages # Название рабочего процесса
+name: Delete Old Weather Messages
 
 on:
   schedule:
-    # Запускать каждый час в начале часа. 
-    # Это позволяет регулярно проверять и удалять сообщения,
-    # которые достигли порога удаления (например, 3 часа).
-    - cron: '44 * * * *' 
-  workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
+    - cron: '48 * * * *' 
+  workflow_dispatch:
 
 jobs:
   delete:
-    runs-on: ubuntu-latest # Виртуальная машина, на которой будет выполняться задача
+    runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python # Шаг 2: Настроить среду Python
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Указываем версию Python
+        python-version: '3.10'
 
-    - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
+    - name: Install dependencies
       run: |
-        pip install python-telegram-bot httpx # Устанавливаем библиотеки для взаимодействия с Telegram
+        pip install python-telegram-bot httpx
 
-    - name: Delete Old Messages # Шаг 4: Запустить скрипт удаления старых сообщений
+    - name: Delete Old Messages
       env:
-        # Передаем секрет токена Telegram-бота из настроек репозитория.
-        # Убедитесь, что TELEGRAM_BOT_TOKEN добавлен в Secrets вашего репозитория.
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        
-        # Имя файла, в котором хранятся ID сообщений для удаления.
-        # Должно совпадать с переменной MESSAGES_TO_DELETE_FILE в weather_publisher.py.
         MESSAGES_TO_DELETE_FILE_NAME: messages_to_delete.json 
-        
-        # Время задержки перед удалением сообщений в часах.
-        # Должно совпадать с переменной DELETE_AFTER_HOURS в weather_publisher.py.
         DELETE_AFTER_HOURS_SETTING: 3
-      run: |  # <-- Обратите внимание, что здесь просто | 
-        python -c "import os; import json; import asyncio; from datetime import datetime, timedelta; from telegram import Bot;
+      run: |
+        python -c "
+import os
+import json
+import asyncio
+from datetime import datetime, timedelta
+from telegram import Bot
 
-# Получаем настройки из переменных окружения, переданных из YAML
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN');
-MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json');
-DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3');
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json')
+DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
 
 try:
-    DELETE_AFTER_HOURS = int(DELETE_AFTER_HOURS_STR);
+    DELETE_AFTER_HOURS = int(DELETE_AFTER_HOURS_STR)
 except ValueError:
-    print(f'Предупреждение: Неверное значение DELETE_AFTER_HOURS_SETTING: {DELETE_AFTER_HOURS_STR}. Использую значение по умолчанию: 3 часа.');
-    DELETE_AFTER_HOURS = 3;
+    print(f'Предупреждение: Неверное значение DELETE_AFTER_HƠURS_SETTING: {DELETE_AFTER_HOURS_STR}. Использую значение по умолчанию: 3 часа.')
+    DELETE_AFTER_HOURS = 3
 
 
 async def delete_messages():
     if not TELEGRAM_BOT_TOKEN:
-        print('TELEGRAM_BOT_TOKEN не установлен. Пропускаю удаление.');
-        return;
+        print('TELEGRAM_BOT_TOKEN не установлен. Пропускаю удаление.')
+        return
 
     if not os.path.exists(MESSAGES_FILE):
-        print(f'Файл {MESSAGES_FILE} не найден. Нет сообщений для удаления.');
-        return;
+        print(f'Файл {MESSAGES_FILE} не найден. Нет сообщений для удаления.')
+        return
 
-    bot = Bot(token=TELEGRAM_BOT_TOKEN);
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
     
     try:
         with open(MESSAGES_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f);
+            data = json.load(f)
     except (json.JSONDecodeError, FileNotFoundError):
-        print(f'Ошибка чтения или файл {MESSAGES_FILE} пуст/поврежден. Пропускаю удаление.');
-        return;
+        print(f'Ошибка чтения или файл {MESSAGES_FILE} пуст/поврежден. Пропускаю удаление.')
+        return
 
-    messages_to_keep = [];
+    messages_to_keep = []
     
     for entry in data:
         try:
-            entry_time = datetime.fromisoformat(entry['timestamp']);
-            chat_id = entry['chat_id'];
-            message_ids = entry['message_ids'];
+            entry_time = datetime.fromisoformat(entry['timestamp'])
+            chat_id = entry['chat_id']
+            message_ids = entry['message_ids']
 
             if datetime.now() - entry_time >= timedelta(hours=DELETE_AFTER_HOURS):
-                # ИСПРАВЛЕННАЯ СТРОКА: Использование конкатенации строк вместо f-строки
-                log_message = 'Попытка удалить сообщения в чате ' + str(chat_id) + \
-                              ' (отправлены в ' + entry_time.strftime("%%%%Y-%%%%m-%%%%d %%%%H:%%%%M:%%%%S") + \
-                              '): ' + str(message_ids);
-                print(log_message);
+                # МАКСИМАЛЬНО УПРОЩЕННЫЙ ВЫВОД ДЛЯ ИЗБЕЖАНИЯ ОШИБОК YAML
+                # Используем конкатенацию строк и тройные кавычки для print, если необходимо
+                print('Попытка удалить сообщения в чате ' + str(chat_id) + 
+                      ' (отправлены в ' + entry_time.strftime('%%Y-%%m-%%d %%H:%%M:%%S') + 
+                      '): ' + str(message_ids))
                 
                 for msg_id in message_ids:
                     try:
-                        await bot.delete_message(chat_id=chat_id, message_id=msg_id);
-                        print(f'Удалено сообщение ID {msg_id} в чате {chat_id}.');
-                        await asyncio.sleep(0.1);
+                        await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                        print(f'Удалено сообщение ID {msg_id} в чате {chat_id}.')
+                        await asyncio.sleep(0.1)
                     except Exception as e:
-                        print(f'Ошибка при удалении сообщения ID {msg_id} в чате {chat_id}: {e}');
+                        print(f'Ошибка при удалении сообщения ID {msg_id} в чате {chat_id}: {e}')
             else:
-                messages_to_keep.append(entry);
+                messages_to_keep.append(entry)
         except KeyError as e:
-            print(f'Пропущена поврежденная запись в {MESSAGES_FILE} (отсутствует ключ: {e}).');
+            print(f'Пропущена поврежденная запись в {MESSAGES_FILE} (отсутствует ключ: {e}).')
         except ValueError as e:
-            print(f'Пропущена запись с неверным форматом даты в {MESSAGES_FILE}: {e}.');
+            print(f'Пропущена запись с неверным форматом даты в {MESSAGES_FILE}: {e}.')
 
 
     try:
         with open(MESSAGES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(messages_to_keep, f, ensure_ascii=False, indent=4);
-        print(f'Файл {MESSAGES_FILE} обновлен. Осталось записей: {len(messages_to_keep)}.');
+            json.dump(messages_to_keep, f, ensure_ascii=False, indent=4)
+        print(f'Файл {MESSAGES_FILE} обновлен. Осталось записей: {len(messages_to_keep)}.')
     except Exception as e:
-        print(f'Ошибка при перезаписи файла {MESSAGES_FILE}: {e}');
+        print(f'Ошибка при перезаписи файла {MESSAGES_FILE}: {e}')
 
 if __name__ == '__main__':
-    asyncio.run(delete_messages());
-" # <-- Закрытие кавычек и отсутствие тройных кавычек в самом YAML-файле
+    asyncio.run(delete_messages())
+"
