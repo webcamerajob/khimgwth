@@ -152,14 +152,16 @@ def get_font(font_size: int):
     Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
     Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # 1. Попробуйте загрузить NotoColorEmoji.ttf (для эмодзи)
+    # 1. Попробуйте загрузить NotoColorEmoji.ttf из системной директории (более надежно после установки пакета)
+    # Этот путь является стандартным для Ubuntu после установки fonts-noto-color-emoji
+    system_emoji_font_path = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
     try:
-        font = ImageFont.truetype("NotoColorEmoji.ttf", font_size, encoding="UTF-8")
-        logger.info("Шрифт 'NotoColorEmoji.ttf' успешно загружен (с поддержкой эмодзи).")
+        font = ImageFont.truetype(system_emoji_font_path, font_size, encoding="UTF-8")
+        logger.info(f"Шрифт '{system_emoji_font_path}' успешно загружен (с поддержкой эмодзи).")
         return font
     except IOError:
-        logger.warning("Шрифт 'NotoColorEmoji.ttf' не найден. Попытка загрузить 'arial.ttf'.")
-        # 2. Попробуйте загрузить Arial.ttf (для кириллицы, если NotoColorEmoji не найден)
+        logger.warning(f"Системный шрифт '{system_emoji_font_path}' не найден. Попытка загрузить 'arial.ttf'.")
+        # Если системный Noto не найден, попробуйте Arial (предполагая, что он рядом со скриптом)
         try:
             font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
             logger.info("Шрифт 'arial.ttf' успешно загружен.")
