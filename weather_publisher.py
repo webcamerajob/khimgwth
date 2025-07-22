@@ -4,7 +4,8 @@ import asyncio
 import os
 from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot # Импортируем Bot здесь
+from telegram import Bot, InputMediaPhoto # Импортируем InputMediaPhoto
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton # Импортируем для кнопок
 
 # Настройка логирования
 logging.basicConfig(
@@ -20,7 +21,13 @@ TEST_MODE = True  # Установите True для использования 
 
 # --- Настройки вотермарки ---
 WATERMARK_FILE = "watermark.png" # Имя файла вашей вотермарки, расположенного в корневой папке
-WATERMARK_SCALE_FACTOR = 0.3 # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
+WATERMARK_SCALE_FACTOR = 0.25 # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
+
+# --- Настройки кнопок ---
+AD_BUTTON_TEXT = "Реклама"
+AD_BUTTON_URL = "https://www.google.com/" # Замените на вашу ссылку для рекламы
+NEWS_BUTTON_TEXT = "Новости"
+NEWS_BUTTON_URL = "https://www.yandex.ru/" # Замените на вашу ссылку для новостей
 
 # --- Предустановленные данные о погоде (для TEST_MODE) ---
 PRESET_WEATHER_DATA = {
@@ -318,50 +325,24 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         # Добавляем вотермарку к сгенерированному изображению
         watermarked_path = add_watermark(original_output_path)
         
-        # Если вотермарка успешно добавлена, удаляем оригинальное изображение без вотермарки
-        if watermarked_path:
-            os.remove(original_output_path)
-            return watermarked_path
-        else:
-            return original_output_path # Возвращаем оригинальный путь, если вотермарка не добавлена
+        # Возвращаем путь к вотермаркированному изображению, если оно было создано, иначе к оригиналу
+        return watermarked_path if watermarked_path else original_output_path
     
     except Exception as e:
         logger.error(f"Ошибка при создании изображения для {city_name}: {e}")
         return None
 
-async def format_and_send_weather(bot: Bot, city_name: str, weather_data: Dict, target_chat_id: str):
-    """
-    Форматирует данные о погоде, создает изображение и отправляет его в Telegram.
-    Теперь отправляет изображение с вотермаркой.
-    """
-    image_path_to_send = create_weather_image(city_name, weather_data)
-    
-    if image_path_to_send:
-        try:
-            with open(image_path_to_send, 'rb') as photo:
-                await bot.send_photo(chat_id=target_chat_id, photo=photo)
-            
-            # Удаляем как оригинальные, так и вотермаркированные файлы, если они существуют
-            if image_path_to_send.endswith("_watermarked.png"):
-                original_path = image_path_to_send.replace("_watermarked.png", ".png")
-                if os.path.exists(original_path):
-                    os.remove(original_path) # Удаляем оригинал, если была создана вотермарка
-            os.remove(image_path_to_send) # Удаляем отправленный файл (может быть оригиналом или с вотермаркой)
-            
-            logger.info(f"Изображение погоды для {city_name} успешно отправлено.")
-        except Exception as e:
-            logger.error(f"Ошибка при отправке изображения для {city_name}: {e}")
-            await bot.send_message(chat_id=target_chat_id, text=f"Ошибка при отправке изображения погоды для {city_name}.", parse_mode='HTML')
-    else:
-        await bot.send_message(chat_id=target_chat_id, text=f"Не удалось создать изображение погоды для {city_name}.", parse_mode='HTML')
-
 async def main():
     """
     Основная функция, которая запускает скрипт.
-    Собирает данные для каждого города и отправляет отдельное изображение.
+    Собирает данные для каждого города, генерирует изображения,
+    а затем отправляет их как медиагруппу с кнопками.
     """
     global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
+    
+    # Список для хранения путей к сгенерированным изображениям для медиагруппы
+    generated_image_paths: List[str] = []
 
     # Проверка наличия всех необходимых переменных окружения
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -375,7 +356,6 @@ async def main():
         if not TEST_MODE and not accuweather_api_key:
             logger.error("ACCUWEATHER_API_KEY также необходим, когда TEST_MODE=False.")
         
-        # Пытаемся отправить сообщение об ошибке, если хотя бы токен и chat_id доступны
         if telegram_bot_token and target_chat_id:
             bot = Bot(token=telegram_bot_token)
             await bot.send_message(chat_id=target_chat_id,
@@ -398,10 +378,9 @@ async def main():
     logger.warning(f"Убедитесь, что файлы изображений присутствуют в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' для использования в качестве фонов.")
     logger.warning(f"Убедитесь, что '{WATERMARK_FILE}' присутствует в корневой директории для вотермарки.")
 
-
-    # Собираем и отправляем данные для каждого города отдельно
+    # Собираем данные и генерируем изображения для каждого города
     for city in cities_to_publish:
-        city_to_process = city # Устанавливаем глобальную переменную для тестового режима
+        city_to_process = city
         logger.info(f"Получаю данные для {city}...")
         
         weather_data = None
@@ -414,19 +393,65 @@ async def main():
             if location_key:
                 weather_data = await get_current_weather(location_key)
             else:
-                await bot.send_message(chat_id=target_chat_id,
-                                       text=f"⚠️ Не удалось получить Location Key для города <b>{city}</b>.",
-                                       parse_mode='HTML')
-                continue # Переходим к следующему городу, если ключ не получен
+                logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
+                continue # Пропускаем город, если не удалось получить ключ
 
         if weather_data:
-            await format_and_send_weather(bot, city, weather_data, target_chat_id)
+            image_path = create_weather_image(city, weather_data)
+            if image_path:
+                generated_image_paths.append(image_path)
+            else:
+                logger.error(f"Не удалось создать изображение погоды для {city}. Пропускаю этот город.")
         else:
-            await bot.send_message(chat_id=target_chat_id,
-                                   text=f"❌ Не удалось получить данные о погоде для <b>{city}</b>.",
-                                   parse_mode='HTML')
+            logger.warning(f"Не удалось получить данные о погоде для {city}. Пропускаю этот город.")
+        
+        await asyncio.sleep(0.5) # Небольшая задержка между обработкой городов
 
-        await asyncio.sleep(1) # Небольшая задержка между сообщениями
+    # Если есть сгенерированные изображения, отправляем их как медиагруппу
+    if generated_image_paths:
+        media_to_send: List[InputMediaPhoto] = []
+        for i, path in enumerate(generated_image_paths):
+            try:
+                with open(path, 'rb') as f:
+                    # Для первого фото можно добавить подпись, для остальных она будет проигнорирована
+                    caption = "Актуальная погода в Камбодже:" if i == 0 else None
+                    media_to_send.append(InputMediaPhoto(media=f, caption=caption))
+            except FileNotFoundError:
+                logger.error(f"Файл изображения не найден: {path}. Пропускаю его.")
+                continue
+
+        if media_to_send:
+            # Создаем кнопки
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
+                 InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]
+            ])
+
+            try:
+                await bot.send_media_group(chat_id=target_chat_id, media=media_to_send, reply_markup=keyboard)
+                logger.info(f"Медиагруппа из {len(media_to_send)} изображений успешно отправлена.")
+            except Exception as e:
+                logger.error(f"Ошибка при отправке медиагруппы: {e}")
+                await bot.send_message(chat_id=target_chat_id, text=f"❌ Ошибка при отправке изображений погоды.", parse_mode='HTML')
+        else:
+            await bot.send_message(chat_id=target_chat_id, text="Не удалось создать ни одного изображения для отправки.", parse_mode='HTML')
+    else:
+        await bot.send_message(chat_id=target_chat_id, text="Не удалось сгенерировать изображения погоды для отправки.", parse_mode='HTML')
+
+    # Очистка всех сгенерированных файлов изображений
+    for path in generated_image_paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                logger.info(f"Удален временный файл: {path}")
+            # Также удаляем оригинальный файл, если был создан watermarked
+            if path.endswith("_watermarked.png"):
+                original_path = path.replace("_watermarked.png", ".png")
+                if os.path.exists(original_path):
+                    os.remove(original_path)
+                    logger.info(f"Удален оригинальный временный файл: {original_path}")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении временного файла {path}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
