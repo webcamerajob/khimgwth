@@ -132,8 +132,6 @@ def get_random_background_image(city_name: str) -> str | None:
     """
     Возвращает случайный путь к файлу изображения фона для заданного города.
     """
-    # Нормализуем имя города для пути к папке (убираем пробелы, если нужно, или используем точное имя папки)
-    # Предполагаем, что папки названы так же, как и города в cities_to_publish
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
     if os.path.isdir(city_folder):
         image_files = [f for f in os.listdir(city_folder) if os.path.isfile(os.path.join(city_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
@@ -142,9 +140,19 @@ def get_random_background_image(city_name: str) -> str | None:
     logger.warning(f"Папка с фонами не найдена или пуста для города: {city_name} ({city_folder})")
     return None
 
+def round_rectangle(draw, xy, radius, fill):
+    x1, y1, x2, y2 = xy
+    draw.rectangle((x1 + radius, y1, x2 - radius, y2), fill=fill)
+    draw.rectangle((x1, y1 + radius, x2, y2 - radius), fill=fill)
+    draw.ellipse((x1, y1, x1 + radius * 2, y1 + radius * 2), fill=fill)
+    draw.ellipse((x2 - radius * 2, y1, x2, y1 + radius * 2), fill=fill)
+    draw.ellipse((x1, y2 - radius * 2, x1 + radius * 2, y2), fill=fill)
+    draw.ellipse((x2 - radius * 2, y2 - radius * 2, x2, y2), fill=fill)
+
+
 def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     """
-    Создает изображение с информацией о погоде на фоне.
+    Создает изображение с информацией о погоде на фоне с полупрозрачной плашкой.
     """
     background_path = get_random_background_image(city_name)
     if not background_path:
@@ -154,51 +162,81 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         img = Image.open(background_path).convert("RGB")
         width, height = img.size
 
-        # Создаем затемненную накладку
-        # (0, 0, 0) - черный цвет, 128 - уровень прозрачности (от 0 до 255)
-        overlay = Image.new('RGBA', img.size, (0, 0, 0, 128))
-        img.paste(overlay, (0, 0), overlay) # Накладываем на фоновое изображение
-
-        draw = ImageDraw.Draw(img)
-        
-        # Определяем размер шрифта (можно настроить)
-        font_size = int(height * 0.04) # 4% от высоты изображения
-
-        # Пытаемся загрузить шрифт Arial.ttf. Если его нет, используем стандартный.
-        # Для использования Arial, убедитесь, что файл 'arial.ttf' находится в той же папке, что и скрипт,
-        # или укажите полный путь к нему. На Linux это может быть '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'
+        # Определяем размер шрифта
+        font_size = int(height * 0.04)
+        font = None
         try:
-            # Попробуйте указать полный путь к Arial.ttf, если он установлен в системе
-            # Например, font = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Arial.ttf", font_size)
+            # Попробуйте использовать шрифт, который поддерживает кириллицу (например, Arial)
+            # Убедитесь, что 'arial.ttf' находится в той же папке, что и скрипт, или укажите полный путь.
             font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-        except IOError:
+            logger.info("Шрифт 'arial.ttf' успешно загружен.")
+        except IOError as e:
+            logger.error(f"Ошибка загрузки шрифта 'arial.ttf': {e}. Попытка использовать стандартный шрифт.")
             font = ImageFont.load_default()
-            logger.warning("Шрифт 'arial.ttf' не найден или не может быть загружен. Используется стандартный шрифт.")
+            logger.warning("Используется стандартный шрифт. Возможно, не все символы будут отображены корректно.")
+        except Exception as e:
+            logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Попытка использовать стандартный шрифт.")
+            font = ImageFont.load_default()
+            logger.warning("Используется стандартный шрифт. Возможно, не все символы будут отображены корректно.")
+
 
         wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
         pressure_kpa = weather_data['Pressure']['Metric']['Value'] * 0.1
 
-        # Форматируем текст для отображения на изображении
         weather_text_lines = [
             f"☀️ Погода в {city_name.capitalize()}:",
             f"🌡️ Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
             f"🤔 Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
-            f"☀️/☁️ {weather_data['WeatherText']}", # Статичный смайл для состояния
+            f"☀️/☁️ {weather_data['WeatherText']}",
             f"💧 Влажность: {weather_data['RelativeHumidity']}%",
             f"🪁 Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
             f"📊 Давление: {pressure_kpa:.1f} кПа",
         ]
         weather_text = "\n".join(weather_text_lines)
 
-        text_color = (255, 255, 255) # Белый цвет текста
-        
-        # Позиционирование текста (можно настроить)
-        text_x = int(width * 0.05)
-        text_y = int(height * 0.1)
+        # Вычисляем размер текста
+        # getmask() возвращает битмап маску, box[2] и box[3] дают ширину и высоту
+        try:
+            text_bbox = draw.multiline_textbbox((0, 0), weather_text, font=font, spacing=10)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+        except AttributeError: # Для старых версий Pillow, где нет multiline_textbbox
+             logger.warning("Используется старая версия Pillow без multiline_textbbox. Расчет размеров текста может быть неточным.")
+             # Примерная оценка размера текста для старых версий:
+             text_width = max(font.getlength(line) for line in weather_text_lines)
+             text_height = len(weather_text_lines) * (font_size + 10) # 10 - примерный spacing
 
-        # Рисуем многострочный текст на изображении
-        draw.multiline_text((text_x, text_y), weather_text, fill=text_color, font=font, spacing=10) # spacing - интервал между строками
+        # Параметры плашки
+        padding = int(width * 0.03) # Отступы от текста до краев плашки
+        border_radius = int(width * 0.02) # Радиус скругления углов
+        
+        # Размеры плашки
+        plaque_width = text_width + 2 * padding
+        plaque_height = text_height + 2 * padding
+
+        # Позиционирование плашки (центр изображения, или верхний левый угол)
+        # Давайте разместим в верхнем левом углу с небольшим отступом
+        plaque_x1 = int(width * 0.05)
+        plaque_y1 = int(height * 0.05)
+        plaque_x2 = plaque_x1 + plaque_width
+        plaque_y2 = plaque_y1 + plaque_height
+
+        # Создаем изображение для плашки с прозрачностью
+        plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0)) # Полностью прозрачная основа
+        plaque_draw = ImageDraw.Draw(plaque_img)
+
+        # Рисуем скругленный прямоугольник на плашке
+        round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150)) # Черный, полупрозрачный
+
+        # Накладываем плашку на основное изображение
+        img.paste(plaque_img, (0, 0), plaque_img)
+
+        # Рисуем текст на основном изображении поверх плашки
+        text_x = plaque_x1 + padding
+        text_y = plaque_y1 + padding
+        draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10)
+
 
         output_path = f"weather_{city_name.lower().replace(' ', '_')}.png"
         img.save(output_path)
