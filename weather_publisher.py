@@ -152,21 +152,20 @@ def get_font(font_size: int):
     Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
     Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # 1. Попробуйте загрузить системный шрифт Noto Color Emoji.ttf
-    # (Он устанавливается с помощью apt-get install fonts-noto-color-emoji)
-    system_noto_emoji_path = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+    # 1. Попробуйте загрузить системный шрифт Twemoji Mozilla (должен поддерживать эмодзи и кириллицу)
+    # Путь к нему обычно /usr/share/fonts/truetype/twitter/TwemojiMozilla.ttf
+    system_twemoji_path = "/usr/share/fonts/truetype/twitter/TwemojiMozilla.ttf"
     try:
-        font = ImageFont.truetype(system_noto_emoji_path, font_size, encoding="UTF-8")
-        logger.info(f"Системный эмодзи-шрифт '{system_noto_emoji_path}' успешно загружен.")
+        font = ImageFont.truetype(system_twemoji_path, font_size, encoding="UTF-8")
+        logger.info(f"Системный эмодзи-шрифт '{system_twemoji_path}' (Twemoji Mozilla) успешно загружен.")
         return font
     except IOError:
-        logger.warning(f"Системный шрифт '{system_noto_emoji_path}' не найден. Попытка загрузить 'arial.ttf'.")
+        logger.warning(f"Системный шрифт '{system_twemoji_path}' не найден. Попытка загрузить 'arial.ttf'.")
     except Exception as e:
-        # Ловим ошибку invalid pixel size здесь, но продолжаем попытки с другими шрифтами
-        logger.warning(f"Ошибка при загрузке системного эмодзи-шрифта '{system_noto_emoji_path}': {e}. Попытка загрузить 'arial.ttf'.")
+        logger.warning(f"Ошибка при загрузке системного эмодзи-шрифта '{system_twemoji_path}': {e}. Попытка загрузить 'arial.ttf'.")
 
 
-    # 2. Если системный эмодзи-шрифт не загружен, попробуйте Arial.ttf
+    # 2. Если Twemoji Mozilla не загружен, попробуйте Arial.ttf
     try:
         # Предполагается, что arial.ttf лежит рядом со скриптом
         font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
