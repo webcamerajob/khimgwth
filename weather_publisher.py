@@ -92,15 +92,18 @@ async def get_location_key(city_name: str) -> str | None:
         logger.error(f"Ошибка при запросе Location Key для {city_name} к AccuWeather API: {e} (TEST_MODE OFF)")
         return None
 
-async def get_current_weather(location_key: str, city_name_for_test: str) -> Dict | None:
+# Глобальная переменная для временного хранения названия города в тестовом режиме,
+# чтобы get_current_weather мог найти нужные предустановленные данные.
+city_to_process = ""
+
+async def get_current_weather(location_key: str) -> Dict | None:
     """
     Получает текущие погодные условия для заданного Location Key.
-    Параметр city_name_for_test используется только в тестовом режиме.
     """
     if TEST_MODE:
-        if city_name_for_test in PRESET_WEATHER_DATA:
-            logger.info(f"Используются предустановленные данные для: {city_name_for_test}")
-            return PRESET_WEATHER_DATA.get(city_name_for_test)
+        if city_to_process in PRESET_WEATHER_DATA:
+            logger.info(f"Используются предустановленные данные для: {city_to_process}")
+            return PRESET_WEATHER_DATA.get(city_to_process)
         return None
 
     url = f"{ACCUWEATHER_BASE_URL}currentconditions/v1/{location_key}"
@@ -123,28 +126,17 @@ async def get_current_weather(location_key: str, city_name_for_test: str) -> Dic
         logger.error(f"Ошибка при запросе погоды для Location Key {location_key} к AccuWeather API: {e} (TEST_MODE OFF)")
         return None
 
-def get_random_background_image(city_name: str = "Общий") -> str | None:
+def get_random_background_image(city_name: str) -> str | None:
     """
-    Возвращает случайный путь к файлу изображения фона.
-    Если есть папка 'Общий', берет из нее, иначе из папки первого города.
+    Возвращает случайный путь к файлу изображения фона для заданного города.
     """
-    common_folder = os.path.join(BACKGROUNDS_FOLDER, "Общий")
-    if os.path.isdir(common_folder):
-        image_files = [f for f in os.listdir(common_folder) if os.path.isfile(os.path.join(common_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
+    if os.path.isdir(city_folder):
+        image_files = [f for f in os.listdir(city_folder) if os.path.isfile(os.path.join(city_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
         if image_files:
-            return os.path.join(common_folder, random.choice(image_files))
-    
-    # Если общей папки нет или она пуста, попробуем взять из папки Пномпеня (как основной для фона)
-    phnom_penh_folder = os.path.join(BACKGROUNDS_FOLDER, "Пномпень")
-    if os.path.isdir(phnom_penh_folder):
-        image_files = [f for f in os.listdir(phnom_penh_folder) if os.path.isfile(os.path.join(phnom_penh_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
-        if image_files:
-            logger.warning(f"Используется фон из папки 'Пномпень', так как папка 'Общий' отсутствует или пуста.")
-            return os.path.join(phnom_penh_folder, random.choice(image_files))
-
-    logger.error(f"Папки для фонов 'Общий' и 'Пномпень' не найдены или пусты. Невозможно сгенерировать изображение.")
+            return os.path.join(city_folder, random.choice(image_files))
+    logger.warning(f"Папка с фонами не найдена или пуста для города: {city_name} ({city_folder})")
     return None
-
 
 def round_rectangle(draw, xy, radius, fill):
     x1, y1, x2, y2 = xy
@@ -184,11 +176,12 @@ def get_font(font_size: int):
         logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
         return font
 
-def create_combined_weather_image(all_weather_data: Dict[str, Dict]) -> str | None:
+
+def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     """
-    Создает одно изображение с информацией о погоде для всех городов.
+    Создает изображение с информацией о погоде на фоне с полупрозрачной плашкой.
     """
-    background_path = get_random_background_image() # Используем общую папку для фона
+    background_path = get_random_background_image(city_name)
     if not background_path:
         return None
 
@@ -198,185 +191,128 @@ def create_combined_weather_image(all_weather_data: Dict[str, Dict]) -> str | No
         
         draw = ImageDraw.Draw(img) 
 
-        # Параметры макета
-        num_cities = len(all_weather_data)
-        
-        # Общая ширина, которую займут плашки (около 90% от ширины изображения)
-        total_plaque_area_width = int(width * 0.90)
-        
-        # Отступы и интервалы
-        horizontal_padding_img = (width - total_plaque_area_width) // 2 # Отступ от краев изображения до плашек
-        vertical_padding_img = int(height * 0.04) # Отступ сверху и снизу изображения
-        plaque_spacing_y = int(height * 0.02) # Вертикальный интервал между плашками
+        wind_direction_text = weather_data['Wind']['Direction']['Localized']
+        wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
+        pressure_kpa = weather_data['Pressure']['Metric']['Value'] * 0.1
 
-        # Ширина каждой плашки
-        plaque_width_individual = total_plaque_area_width
-        
-        # Начальная позиция Y для первой плашки
-        current_y = vertical_padding_img
+        weather_text_lines = [
+            f"Погода в {city_name.capitalize()}:",
+            f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
+            f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
+            f"{weather_data['WeatherText']}",
+            f"Влажность: {weather_data['RelativeHumidity']}%",
+            f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
+            f"Давление: {pressure_kpa:.1f} кПа",
+        ]
+        weather_text = "\n".join(weather_text_lines)
 
-        # Список для хранения данных о плашках (для дальнейшего рендеринга)
-        plaque_info_list = []
-
-        # Предварительный проход для определения размера шрифта и высоты плашек
-        # Это нужно, чтобы равномерно распределить их по вертикали
-        # Для простоты, сначала определим базовый размер шрифта, а затем
-        # рассчитаем высоту каждой плашки.
+        # Рассчитываем размер плашки (85% ширины от полного кадра)
+        plaque_width = int(width * 0.85)
         
-        # Максимальная высота, доступная для каждой плашки
-        max_available_height_per_plaque = (height - 2 * vertical_padding_img - (num_cities - 1) * plaque_spacing_y) / num_cities
-
-        # Определение оптимального размера шрифта
-        # Мы хотим, чтобы текст был читабельным и вписывался в ширину плашки
-        max_text_width_in_plaque = int(plaque_width_individual * 0.90) # Текст занимает 90% ширины плашки
+        # Определяем размер шрифта на основе 75% от ширины плашки
+        target_text_width_ratio = 0.75
+        max_text_width_for_font_sizing = int(plaque_width * target_text_width_ratio)
         
-        # Определяем максимальный font_size, который поместится в max_text_width_in_plaque
-        # и будет иметь адекватную высоту
-        optimal_font_size = 1 # Начинаем с очень маленького
-        temp_font = get_font(optimal_font_size)
-        if temp_font is None: # Запасной вариант, если даже маленький шрифт не грузится
-            logger.error("Не удалось загрузить ни один шрифт для расчета размера текста.")
-            return None
-
-        test_text_longest_line = "Температура: 99.9°C" # Пример самой длинной строки
+        current_font_size = 15 # Начинаем с разумного размера
+        best_font = get_font(current_font_size) # Инициализируем с начальным шрифтом
         
+        # Итеративно увеличиваем размер шрифта, пока текст не достигнет 75% ширины плашки
         while True:
-            temp_font = get_font(optimal_font_size + 1)
-            if temp_font is None: break # Невозможно увеличить шрифт
-            
-            # Используем getbbox для определения ширины строки с текущим шрифтом
-            bbox = draw.textbbox((0, 0), test_text_longest_line, font=temp_font)
-            current_line_width = bbox[2] - bbox[0]
-
-            if current_line_width < max_text_width_in_plaque:
-                optimal_font_size += 1
-            else:
+            test_font = get_font(current_font_size + 1)
+            if test_font is None: # Если шрифт не загрузился или не увеличивается
                 break
+            
+            # Используем getbbox для более точного измерения размера текста
+            bbox = draw.textbbox((0, 0), weather_text, font=test_font, spacing=10)
+            text_width_current = bbox[2] - bbox[0]
+
+            if text_width_current <= max_text_width_for_font_sizing:
+                best_font = test_font
+                current_font_size += 1
+            else:
+                break # Текст стал слишком большим, используем предыдущий размер
+
+        font = best_font # Используем найденный оптимальный шрифт
         
-        # Используем найденный оптимальный размер шрифта для всех плашек
-        font = get_font(optimal_font_size)
-        if font is None:
-            logger.error("Не удалось загрузить оптимальный шрифт.")
-            return None
+        # Пересчитываем размер текста с финальным шрифтом
+        bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
+        text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        # Собираем данные для каждой плашки
-        for city_name, weather_data in all_weather_data.items():
-            wind_direction_abbr = get_wind_direction_abbr(weather_data['Wind']['Direction']['Localized'])
-            pressure_kpa = weather_data['Pressure']['Metric']['Value'] * 0.1
-
-            weather_text_lines = [
-                f"{city_name.capitalize()}:",
-                f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
-                f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
-                f"{weather_data['WeatherText']}",
-                f"Влажность: {weather_data['RelativeHumidity']}%",
-                f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
-                f"Давление: {pressure_kpa:.1f} кПа",
-            ]
-            weather_text = "\n".join(weather_text_lines)
-
-            # Получаем размеры текста
-            bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=5) # Меньший spacing для компактности
-            text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            
-            # padding внутри плашки
-            plaque_inner_padding = int(plaque_width_individual * 0.05) # 5% от ширины плашки для отступов
-            
-            plaque_height_individual = text_height + 2 * plaque_inner_padding
-            
-            # Проверяем, не выходит ли плашка за рамки доступной высоты
-            if plaque_height_individual > max_available_height_per_plaque:
-                # Если плашка слишком высокая, уменьшаем внутренний отступ или шрифт
-                # В данном случае, просто обрезаем, если очень сильно вылезает
-                logger.warning(f"Плашка для {city_name} слишком высокая ({plaque_height_individual:.0f}px), обрезана до {max_available_height_per_plaque:.0f}px.")
-                plaque_height_individual = max_available_height_per_plaque
-
-            plaque_info_list.append({
-                "city_name": city_name,
-                "text": weather_text,
-                "text_width": text_width,
-                "text_height": text_height,
-                "plaque_height": plaque_height_individual,
-                "inner_padding": plaque_inner_padding,
-            })
-
-        # Общая высота, занимаемая всеми плашками и промежутками
-        total_content_height = sum(p['plaque_height'] for p in plaque_info_list) + \
-                               (num_cities - 1) * plaque_spacing_y
+        # Высота плашки подстраивается под текст с отступами
+        padding = int(width * 0.03) # Отступы от текста до краев плашки
+        border_radius = int(width * 0.02) # Радиус скругления углов
         
-        # Центрируем весь блок плашек по вертикали
-        start_y = (height - total_content_height) // 2
-        if start_y < vertical_padding_img: # Если блок слишком большой, начинаем с верхнего отступа
-            start_y = vertical_padding_img
+        plaque_height = text_height + 2 * padding
 
-        current_y_render = start_y
+        # Позиционирование плашки (по центру по горизонтали, небольшой отступ сверху)
+        plaque_x1 = (width - plaque_width) // 2
+        plaque_y1 = int(height * 0.05) # Небольшой отступ сверху
+        plaque_x2 = plaque_x1 + plaque_width
+        plaque_y2 = plaque_y1 + plaque_height
 
-        # Рисуем каждую плашку
-        for plaque_info in plaque_info_list:
-            plaque_x1 = horizontal_padding_img
-            plaque_y1 = current_y_render
-            plaque_x2 = plaque_x1 + plaque_width_individual
-            plaque_y2 = plaque_y1 + plaque_info['plaque_height']
+        # Создаем изображение для плашки с прозрачностью
+        plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0)) # Полностью прозрачная основа
+        plaque_draw = ImageDraw.Draw(plaque_img)
 
-            # Создаем изображение для плашки с прозрачностью
-            plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0))
-            plaque_draw = ImageDraw.Draw(plaque_img)
+        # Рисуем скругленный прямоугольник на плашке
+        round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150)) # Черный, полупрозрачный
 
-            border_radius = int(plaque_width_individual * 0.02)
-            round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150))
-            img.paste(plaque_img, (0, 0), plaque_img)
+        # Накладываем плашку на основное изображение
+        img.paste(plaque_img, (0, 0), plaque_img)
 
-            # Рисуем текст по центру плашки
-            text_x = plaque_x1 + (plaque_width_individual - plaque_info['text_width']) // 2
-            text_y = plaque_y1 + plaque_info['inner_padding']
-            
-            draw.multiline_text((text_x, text_y), plaque_info['text'], fill=(255, 255, 255), font=font, spacing=5, align="center")
-
-            current_y_render += plaque_info['plaque_height'] + plaque_spacing_y
+        # Рисуем текст по центру плашки
+        text_x = plaque_x1 + (plaque_width - text_width) // 2
+        text_y = plaque_y1 + padding
+        
+        draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
 
 
-        output_path = "weather_summary.png" # Одно имя для итогового файла
+        output_path = f"weather_{city_name.lower().replace(' ', '_')}.png"
         img.save(output_path)
         return output_path
 
     except Exception as e:
-        logger.error(f"Ошибка при создании объединенного изображения погоды: {e}")
+        logger.error(f"Ошибка при создании изображения для {city_name}: {e}")
         return None
 
-async def format_and_send_weather(bot: Bot, all_weather_data: Dict[str, Dict], target_chat_id: str):
+async def format_and_send_weather(bot: Bot, city_name: str, weather_data: Dict, target_chat_id: str):
     """
-    Форматирует данные о погоде и отправляет ЕДИНОЕ изображение в Telegram.
+    Форматирует данные о погоде и отправляет изображение в Telegram.
     """
-    image_path = create_combined_weather_image(all_weather_data)
+    image_path = create_weather_image(city_name, weather_data)
     if image_path:
         try:
             with open(image_path, 'rb') as photo:
                 await bot.send_photo(chat_id=target_chat_id, photo=photo)
             os.remove(image_path) # Удаляем файл изображения после отправки
-            logger.info(f"Объединенное изображение погоды успешно отправлено.")
+            logger.info(f"Изображение погоды для {city_name} успешно отправлено.")
         except Exception as e:
-            logger.error(f"Ошибка при отправке объединенного изображения: {e}")
-            await bot.send_message(chat_id=target_chat_id, text=f"Ошибка при отправке объединенного изображения погоды.", parse_mode='HTML')
+            logger.error(f"Ошибка при отправке изображения для {city_name}: {e}")
+            await bot.send_message(chat_id=target_chat_id, text=f"Ошибка при отправке изображения погоды для {city_name}.", parse_mode='HTML')
     else:
-        await bot.send_message(chat_id=target_chat_id, text=f"Не удалось создать объединенное изображение погоды.", parse_mode='HTML')
+        await bot.send_message(chat_id=target_chat_id, text=f"Не удалось создать изображение погоды для {city_name}.", parse_mode='HTML')
 
 async def main():
     """
     Главная функция, которая запускается при выполнении скрипта.
-    Собирает данные для всех городов и отправляет ОДНО сообщение с изображением.
+    Собирает данные для каждого города и отправляет отдельное сообщение (теперь изображение).
     """
+    global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
 
+    # Проверка наличия всех необходимых переменных окружения
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     accuweather_api_key = os.getenv("ACCUWEATHER_API_KEY")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
 
+    # Проверка конфигурации (API-ключ нужен только если TEST_MODE=False)
     if not all([telegram_bot_token, target_chat_id]) or (not TEST_MODE and not accuweather_api_key):
         logger.error("ОШИБКА: Отсутствуют необходимые переменные окружения. "
                      "Убедитесь, что TELEGRAM_BOT_TOKEN и TARGET_CHAT_ID установлены.")
         if not TEST_MODE and not accuweather_api_key:
             logger.error("ACCUWEATHER_API_KEY также необходим, когда TEST_MODE=False.")
         
+        # Пытаемся отправить сообщение об ошибке, если хотя бы токен и chat_id доступны
         if telegram_bot_token and target_chat_id:
             bot = Bot(token=telegram_bot_token)
             await bot.send_message(chat_id=target_chat_id,
@@ -386,59 +322,49 @@ async def main():
 
     bot = Bot(token=telegram_bot_token)
 
-    # Создаем папку backgrounds и подпапку "Общий", а также подпапки для городов, если их нет
+    # Создаем папку backgrounds и подпапки для городов, если их нет
     if not os.path.exists(BACKGROUNDS_FOLDER):
         os.makedirs(BACKGROUNDS_FOLDER)
         logger.info(f"Создана папка для фонов: {BACKGROUNDS_FOLDER}")
-    
-    common_bg_folder = os.path.join(BACKGROUNDS_FOLDER, "Общий")
-    if not os.path.exists(common_bg_folder):
-        os.makedirs(common_bg_folder)
-        logger.info(f"Создана папка для общих фонов: {common_bg_folder}")
-
-    # Подпапки для городов теперь не строго обязательны для фонов, но могут использоваться
-    # для организации, или если вы захотите вернуться к отдельным изображениям.
-    # Оставим их создание на случай, если вы захотите положить туда фон для Пномпеня
-    # на случай отсутствия "Общего"
     for city in cities_to_publish:
         city_folder = os.path.join(BACKGROUNDS_FOLDER, city)
         if not os.path.exists(city_folder):
             os.makedirs(city_folder)
-            logger.info(f"Создана папка для фонов города: {city_folder} (для использования в качестве запасного фонда)")
+            logger.info(f"Создана папка для фонов города: {city_folder}")
     
-    logger.warning(f"Убедитесь, что в папке '{BACKGROUNDS_FOLDER}/Общий' есть изображения для использования в качестве общего фона.")
-    logger.warning(f"Если папка '{BACKGROUNDS_FOLDER}/Общий' пуста, скрипт попытается использовать фон из '{BACKGROUNDS_FOLDER}/Пномпень'.")
+    logger.warning(f"Убедитесь, что в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' есть изображения для использования в качестве фонов.")
 
 
-    all_weather_data = {}
+    # Собираем и отправляем данные для каждого города отдельно
     for city in cities_to_publish:
+        city_to_process = city # Устанавливаем глобальную переменную для тестового режима
         logger.info(f"Получаю данные для {city}...")
         
         weather_data = None
         if TEST_MODE:
+            # В тестовом режиме напрямую берем из PRESET_WEATHER_DATA
             weather_data = PRESET_WEATHER_DATA.get(city)
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
         else:
+            # В реальном режиме сначала получаем Location Key, затем данные о погоде
             location_key = await get_location_key(city)
             if location_key:
-                weather_data = await get_current_weather(location_key, city) # Передаем city для тестового режима
+                weather_data = await get_current_weather(location_key)
             else:
-                logger.warning(f"Не удалось получить Location Key для города: {city}. Данные для него не будут включены.")
-        
+                await bot.send_message(chat_id=target_chat_id,
+                                       text=f"⚠️ Не удалось получить Location Key для города <b>{city}</b>.",
+                                       parse_mode='HTML')
+                continue # Переходим к следующему городу, если ключ не получен
+
         if weather_data:
-            all_weather_data[city] = weather_data
+            await format_and_send_weather(bot, city, weather_data, target_chat_id)
         else:
             await bot.send_message(chat_id=target_chat_id,
-                                   text=f"❌ Не удалось получить данные о погоде для <b>{city}</b>. Он не будет включен в сводку.",
+                                   text=f"❌ Не удалось получить данные о погоде для <b>{city}</b>.",
                                    parse_mode='HTML')
 
-    if all_weather_data:
-        await format_and_send_weather(bot, all_weather_data, target_chat_id)
-    else:
-        await bot.send_message(chat_id=target_chat_id,
-                               text=f"❌ Не удалось получить данные о погоде ни для одного из городов.",
-                               parse_mode='HTML')
+        await asyncio.sleep(1) # Небольшая задержка между сообщениями
 
 if __name__ == "__main__":
     asyncio.run(main())
