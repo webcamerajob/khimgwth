@@ -22,16 +22,16 @@ jobs:
 
     - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
       run: |
-        pip install python-telegram-bot httpx requests pillow # Убедитесь, что все нужные библиотеки здесь
-        # Возможно, вам нужны и другие библиотеки для погоды, шрифтов и т.д. Добавьте их сюда.
+        # Убедитесь, что здесь перечислены ВСЕ библиотеки, необходимые для weather_publisher.py
+        # Например: python-telegram-bot, httpx, requests, Pillow
+        pip install python-telegram-bot httpx requests Pillow 
 
     - name: Run Weather Publisher Script # Шаг 4: Запустить скрипт публикации погоды
       env:
         # Передаем секреты и переменные окружения, необходимые для weather_publisher.py
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }} # Убедитесь, что этот секрет добавлен
-        ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }} # Ваш API ключ AccuWeather
-        # Другие переменные, если они нужны вашему weather_publisher.py
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }} 
+        ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }} # Если вы его используете, убедитесь, что секрет добавлен
         
         # Передаем имя файла для ID сообщений, чтобы weather_publisher.py знал куда сохранять
         MESSAGES_TO_DELETE_FILE: messages_to_delete.json 
