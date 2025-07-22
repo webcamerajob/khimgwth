@@ -152,20 +152,19 @@ def get_font(font_size: int):
     Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
     Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # 1. Попробуйте загрузить системный шрифт Twemoji Mozilla (должен поддерживать эмодзи и кириллицу)
-    # Путь к нему обычно /usr/share/fonts/truetype/twitter/TwemojiMozilla.ttf
-    system_twemoji_path = "/usr/share/fonts/truetype/twitter/TwemojiMozilla.ttf"
+    # 1. Попробуйте загрузить NotoColorEmoji.ttf из текущей директории
+    # (Вы поместили его туда вручную)
     try:
-        font = ImageFont.truetype(system_twemoji_path, font_size, encoding="UTF-8")
-        logger.info(f"Системный эмодзи-шрифт '{system_twemoji_path}' (Twemoji Mozilla) успешно загружен.")
+        font = ImageFont.truetype("NotoColorEmoji.ttf", font_size, encoding="UTF-8")
+        logger.info("Шрифт 'NotoColorEmoji.ttf' успешно загружен (из репозитория).")
         return font
     except IOError:
-        logger.warning(f"Системный шрифт '{system_twemoji_path}' не найден. Попытка загрузить 'arial.ttf'.")
+        logger.warning("Шрифт 'NotoColorEmoji.ttf' не найден в репозитории. Попытка загрузить 'arial.ttf'.")
     except Exception as e:
-        logger.warning(f"Ошибка при загрузке системного эмодзи-шрифта '{system_twemoji_path}': {e}. Попытка загрузить 'arial.ttf'.")
+        logger.warning(f"Ошибка при загрузке 'NotoColorEmoji.ttf': {e}. Попытка загрузить 'arial.ttf'.")
 
 
-    # 2. Если Twemoji Mozilla не загружен, попробуйте Arial.ttf
+    # 2. Если NotoColorEmoji.ttf не загружен, попробуйте Arial.ttf
     try:
         # Предполагается, что arial.ttf лежит рядом со скриптом
         font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
