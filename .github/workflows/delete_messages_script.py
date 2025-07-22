@@ -1,0 +1,74 @@
+import os
+import json
+import asyncio
+from datetime import datetime, timedelta
+from telegram import Bot
+
+# Настройки, которые были в YAML (постоянные значения или из переменных окружения)
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json')
+DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
+
+try:
+    DELETE_AFTER_HOURS = int(DELETE_AFTER_HOURS_STR)
+except ValueError:
+    print(f'Предупреждение: Неверное значение DELETE_AFTER_HOURS_SETTING: {DELETE_AFTER_HOURS_STR}. Использую значение по умолчанию: 3 часа.')
+    DELETE_AFTER_HOURS = 3
+
+
+async def delete_messages():
+    """
+    Асинхронная функция для чтения файла с ID сообщений и их удаления,
+    если они старше заданного порога времени.
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        print('TELEGRAM_BOT_TOKEN не установлен. Пропускаю удаление.')
+        return
+
+    if not os.path.exists(MESSAGES_FILE):
+        print(f'Файл {MESSAGES_FILE} не найден. Нет сообщений для удаления.')
+        return
+
+    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    
+    try:
+        with open(MESSAGES_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        print(f'Ошибка чтения или файл {MESSAGES_FILE} пуст/поврежден. Пропускаю удаление.')
+        return
+
+    messages_to_keep = []
+    
+    for entry in data:
+        try:
+            entry_time = datetime.fromisoformat(entry['timestamp'])
+            chat_id = entry['chat_id']
+            message_ids = entry['message_ids']
+
+            if datetime.now() - entry_time >= timedelta(hours=DELETE_AFTER_HOURS):
+                print(f'Попытка удалить сообщения в чате {chat_id} (отправлены в {entry_time.strftime("%Y-%m-%d %H:%M:%S")}): {message_ids}') 
+                for msg_id in message_ids:
+                    try:
+                        await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                        print(f'Удалено сообщение ID {msg_id} в чате {chat_id}.')
+                        await asyncio.sleep(0.1)
+                    except Exception as e:
+                        print(f'Ошибка при удалении сообщения ID {msg_id} в чате {chat_id}: {e}')
+            else:
+                messages_to_keep.append(entry)
+        except KeyError as e:
+            print(f'Пропущена поврежденная запись в {MESSAGES_FILE} (отсутствует ключ: {e}).')
+        except ValueError as e:
+            print(f'Пропущена запись с неверным форматом даты в {MESSAGES_FILE}: {e}.')
+
+
+    try:
+        with open(MESSAGES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(messages_to_keep, f, ensure_ascii=False, indent=4)
+        print(f'Файл {MESSAGES_FILE} обновлен. Осталось записей: {len(messages_to_keep)}.')
+    except Exception as e:
+        print(f'Ошибка при перезаписи файла {MESSAGES_FILE}: {e}')
+
+if __name__ == '__main__':
+    asyncio.run(delete_messages())
