@@ -4,8 +4,8 @@ import asyncio
 import os
 from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot, InputMediaPhoto # Импортируем InputMediaPhoto
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton # Импортируем для кнопок
+from telegram import Bot, InputMediaPhoto
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Настройка логирования
 logging.basicConfig(
@@ -410,25 +410,29 @@ async def main():
     # Если есть сгенерированные изображения, отправляем их как медиагруппу
     if generated_image_paths:
         media_to_send: List[InputMediaPhoto] = []
+        
+        # Создаем кнопки
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
+             InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]
+        ])
+
         for i, path in enumerate(generated_image_paths):
             try:
                 with open(path, 'rb') as f:
-                    # Для первого фото можно добавить подпись, для остальных она будет проигнорирована
-                    caption = "Актуальная погода в Камбодже:" if i == 0 else None
-                    media_to_send.append(InputMediaPhoto(media=f, caption=caption))
+                    # Для первого фото добавляем подпись и reply_markup
+                    if i == 0:
+                        media_to_send.append(InputMediaPhoto(media=f, caption="Актуальная погода в Камбодже:", reply_markup=keyboard))
+                    else:
+                        media_to_send.append(InputMediaPhoto(media=f)) # Для остальных фото без подписи и кнопок
             except FileNotFoundError:
                 logger.error(f"Файл изображения не найден: {path}. Пропускаю его.")
                 continue
 
         if media_to_send:
-            # Создаем кнопки
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
-                 InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]
-            ])
-
             try:
-                await bot.send_media_group(chat_id=target_chat_id, media=media_to_send, reply_markup=keyboard)
+                # Отправляем медиагруппу. reply_markup теперь прикреплен к первому InputMediaPhoto
+                await bot.send_media_group(chat_id=target_chat_id, media=media_to_send)
                 logger.info(f"Медиагруппа из {len(media_to_send)} изображений успешно отправлена.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке медиагруппы: {e}")
