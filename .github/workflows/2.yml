@@ -27,8 +27,7 @@ jobs:
 
     - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
       run: |
-        mkdir -p backgrounds/Общий
-        mkdir -p backgrounds/Пномпень # Для запасного фона
+        mkdir -p backgrounds/Пномпень
         mkdir -p backgrounds/Сиануквиль
         mkdir -p backgrounds/Сиемреап
         # Примечание: Убедитесь, что ваши фоновые изображения находятся в этих папках
