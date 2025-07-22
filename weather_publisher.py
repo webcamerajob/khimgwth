@@ -1,11 +1,10 @@
 import logging
 import requests
 import asyncio
-from telegram import Bot
 import os
 from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
-import random
+from telegram import Bot # Импортируем Bot здесь
 
 # Настройка логирования
 logging.basicConfig(
@@ -19,7 +18,11 @@ ACCUWEATHER_BASE_URL = "http://dataservice.accuweather.com/"
 # --- Переключатель тестового режима ---
 TEST_MODE = True  # Установите True для использования предустановленных данных, False для использования реального API
 
-# --- Предустановленные данные о погоде ---
+# --- Настройки вотермарки ---
+WATERMARK_FILE = "watermark.png" # Имя файла вашей вотермарки, расположенного в корневой папке
+WATERMARK_SCALE_FACTOR = 0.25 # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
+
+# --- Предустановленные данные о погоде (для TEST_MODE) ---
 PRESET_WEATHER_DATA = {
     "Пномпень": {
         "Temperature": {"Metric": {"Value": 32.5}},
@@ -84,7 +87,7 @@ async def get_location_key(city_name: str) -> str | None:
         data = response.json()
         if data:
             logger.info(f"Найден Location Key для {city_name}: {data[0]['Key']} (TEST_MODE OFF)")
-            return data[0]["Key"] # Возвращаем только ключ
+            return data[0]["Key"]
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -118,7 +121,7 @@ async def get_current_weather(location_key: str) -> Dict | None:
         data = response.json()
         if data:
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data[0] # Возвращаем первый элемент списка
+            return data[0]
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -132,6 +135,7 @@ def get_random_background_image(city_name: str) -> str | None:
     """
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
     if os.path.isdir(city_folder):
+        import random # Импортируем random локально для этой функции, если не импортирован в начале
         image_files = [f for f in os.listdir(city_folder) if os.path.isfile(os.path.join(city_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
         if image_files:
             return os.path.join(city_folder, random.choice(image_files))
@@ -152,21 +156,18 @@ def get_font(font_size: int):
     Пытается загрузить шрифт, подходящий для кириллицы.
     Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # 1. Попробуйте загрузить Arial.ttf (предполагая, что он находится рядом со скриптом)
     try:
         font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
         logger.info("Шрифт 'arial.ttf' успешно загружен.")
         return font
     except IOError:
         logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-        # 2. Попробуйте DejaVuSans.ttf (часто предустановлен в Linux)
         try:
             font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
             logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
             return font
         except IOError:
             logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
-            # 3. В крайнем случае используйте стандартный шрифт Pillow
             font = ImageFont.load_default()
             logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
             return font
@@ -176,10 +177,57 @@ def get_font(font_size: int):
         logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
         return font
 
+def add_watermark(base_image_path: str) -> str | None:
+    """
+    Накладывает вотермарку из 'watermark.png' на изображение по заданному пути.
+    Вотермарка масштабируется и размещается в правом верхнем углу.
+    Возвращает путь к изображению с вотермаркой или None в случае ошибки.
+    """
+    watermarked_image_path = base_image_path.replace(".png", "_watermarked.png")
+    
+    try:
+        base_img = Image.open(base_image_path).convert("RGBA") # Открываем как RGBA для прозрачности
+        base_width, base_height = base_img.size
+
+        watermark_path = WATERMARK_FILE
+        if not os.path.exists(watermark_path):
+            logger.warning(f"Файл вотермарки не найден по пути: {watermark_path}. Наложение вотермарки пропущено.")
+            return None
+
+        watermark_img = Image.open(watermark_path).convert("RGBA")
+
+        # Масштабируем вотермарку на основе ширины основного изображения
+        target_watermark_width = int(base_width * WATERMARK_SCALE_FACTOR)
+        watermark_height = int(watermark_img.height * (target_watermark_width / watermark_img.width))
+        watermark_img = watermark_img.resize((target_watermark_width, watermark_height), Image.Resampling.LANCZOS)
+
+        # Позиционируем вотермарку в правом верхнем углу с отступами
+        padding = int(base_width * 0.02) # Отступ 2% от края
+        position_x = base_width - watermark_img.width - padding
+        position_y = padding
+
+        # Создаем пустой прозрачный слой для вставки вотермарки
+        transparent_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        transparent_layer.paste(watermark_img, (position_x, position_y), watermark_img)
+
+        # Компонуем вотермарку с основным изображением
+        final_img = Image.alpha_composite(base_img, transparent_layer)
+        
+        final_img.save(watermarked_image_path, "PNG")
+        logger.info(f"Вотермарка добавлена к {base_image_path}. Сохранено как {watermarked_image_path}")
+        return watermarked_image_path
+
+    except FileNotFoundError:
+        logger.error(f"Файл вотермарки '{WATERMARK_FILE}' не найден. Убедитесь, что он находится в корневой директории скрипта.")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении вотермарки к {base_image_path}: {e}")
+        return None
 
 def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     """
     Создает изображение с информацией о погоде на фоне с полупрозрачной плашкой.
+    Возвращает путь к изображению с вотермаркой или None в случае ошибки.
     """
     background_path = get_random_background_image(city_name)
     if not background_path:
@@ -193,17 +241,15 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
 
         wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
-        # Давление удалено
 
         weather_text_lines = [
             f"Погода в {city_name.capitalize()}:",
-            "", # Добавленная пустая строка для отступа
+            "", # Добавлена пустая строка для отступа
             f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
             f"{weather_data['WeatherText']}",
             f"Влажность: {weather_data['RelativeHumidity']}%",
             f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
-            # Строка с давлением удалена
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -223,8 +269,6 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             if test_font is None: # Если шрифт не загрузился или не увеличивается
                 break
             
-            # Используем getbbox для более точного измерения размера текста
-            # spacing = 10 для многострочного текста
             bbox = draw.textbbox((0, 0), weather_text, font=test_font, spacing=10)
             text_width_current = bbox[2] - bbox[0]
 
@@ -232,7 +276,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
                 best_font = test_font
                 current_font_size += 1
             else:
-                break # Текст стал слишком большим, используем предыдущий размер
+                break
 
         font = best_font # Используем найденный оптимальный шрифт
         
@@ -252,7 +296,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         plaque_x2 = plaque_x1 + plaque_width
         plaque_y2 = plaque_y1 + plaque_height
 
-        # Создаем изображение для плашки с прозрачностью
+        # Создаем прозрачное изображение для плашки
         plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0)) # Полностью прозрачная основа
         plaque_draw = ImageDraw.Draw(plaque_img)
 
@@ -263,32 +307,47 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         img.paste(plaque_img, (0, 0), plaque_img)
 
         # Рисуем текст по центру плашки
-        # text_x: уже вычислен как центр горизонтально
-        # text_y: вертикальное центрирование
         text_x = plaque_x1 + (plaque_width - text_width) // 2
         text_y = plaque_y1 + (plaque_height - text_height) // 2 # Вертикальное центрирование текста
         
         draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
 
-
-        output_path = f"weather_{city_name.lower().replace(' ', '_')}.png"
-        img.save(output_path)
-        return output_path
-
+        original_output_path = f"weather_{city_name.lower().replace(' ', '_')}.png"
+        img.save(original_output_path)
+        
+        # Добавляем вотермарку к сгенерированному изображению
+        watermarked_path = add_watermark(original_output_path)
+        
+        # Если вотермарка успешно добавлена, удаляем оригинальное изображение без вотермарки
+        if watermarked_path:
+            os.remove(original_output_path)
+            return watermarked_path
+        else:
+            return original_output_path # Возвращаем оригинальный путь, если вотермарка не добавлена
+    
     except Exception as e:
         logger.error(f"Ошибка при создании изображения для {city_name}: {e}")
         return None
 
 async def format_and_send_weather(bot: Bot, city_name: str, weather_data: Dict, target_chat_id: str):
     """
-    Форматирует данные о погоде и отправляет изображение в Telegram.
+    Форматирует данные о погоде, создает изображение и отправляет его в Telegram.
+    Теперь отправляет изображение с вотермаркой.
     """
-    image_path = create_weather_image(city_name, weather_data)
-    if image_path:
+    image_path_to_send = create_weather_image(city_name, weather_data)
+    
+    if image_path_to_send:
         try:
-            with open(image_path, 'rb') as photo:
+            with open(image_path_to_send, 'rb') as photo:
                 await bot.send_photo(chat_id=target_chat_id, photo=photo)
-            os.remove(image_path) # Удаляем файл изображения после отправки
+            
+            # Удаляем как оригинальные, так и вотермаркированные файлы, если они существуют
+            if image_path_to_send.endswith("_watermarked.png"):
+                original_path = image_path_to_send.replace("_watermarked.png", ".png")
+                if os.path.exists(original_path):
+                    os.remove(original_path) # Удаляем оригинал, если была создана вотермарка
+            os.remove(image_path_to_send) # Удаляем отправленный файл (может быть оригиналом или с вотермаркой)
+            
             logger.info(f"Изображение погоды для {city_name} успешно отправлено.")
         except Exception as e:
             logger.error(f"Ошибка при отправке изображения для {city_name}: {e}")
@@ -298,8 +357,8 @@ async def format_and_send_weather(bot: Bot, city_name: str, weather_data: Dict, 
 
 async def main():
     """
-    Главная функция, которая запускается при выполнении скрипта.
-    Собирает данные для каждого города и отправляет отдельное сообщение (теперь изображение).
+    Основная функция, которая запускает скрипт.
+    Собирает данные для каждого города и отправляет отдельное изображение.
     """
     global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
@@ -309,7 +368,7 @@ async def main():
     accuweather_api_key = os.getenv("ACCUWEATHER_API_KEY")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
 
-    # Проверка конфигурации (API-ключ нужен только если TEST_MODE=False)
+    # Проверка конфигурации (API ключ нужен только если TEST_MODE=False)
     if not all([telegram_bot_token, target_chat_id]) or (not TEST_MODE and not accuweather_api_key):
         logger.error("ОШИБКА: Отсутствуют необходимые переменные окружения. "
                      "Убедитесь, что TELEGRAM_BOT_TOKEN и TARGET_CHAT_ID установлены.")
@@ -336,7 +395,8 @@ async def main():
             os.makedirs(city_folder)
             logger.info(f"Создана папка для фонов города: {city_folder}")
     
-    logger.warning(f"Убедитесь, что в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' есть изображения для использования в качестве фонов.")
+    logger.warning(f"Убедитесь, что файлы изображений присутствуют в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' для использования в качестве фонов.")
+    logger.warning(f"Убедитесь, что '{WATERMARK_FILE}' присутствует в корневой директории для вотермарки.")
 
 
     # Собираем и отправляем данные для каждого города отдельно
@@ -346,12 +406,10 @@ async def main():
         
         weather_data = None
         if TEST_MODE:
-            # В тестовом режиме напрямую берем из PRESET_WEATHER_DATA
             weather_data = PRESET_WEATHER_DATA.get(city)
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
         else:
-            # В реальном режиме сначала получаем Location Key, затем данные о погоде
             location_key = await get_location_key(city)
             if location_key:
                 weather_data = await get_current_weather(location_key)
