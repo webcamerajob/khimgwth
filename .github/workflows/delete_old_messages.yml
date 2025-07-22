@@ -5,7 +5,7 @@ on:
     # Запускать каждый час в начале часа. 
     # Это позволяет регулярно проверять и удалять сообщения,
     # которые достигли порога удаления (например, 3 часа).
-    - cron: '41 * * * *' 
+    - cron: '42 * * * *' 
   workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
         # Должно совпадать с переменной DELETE_AFTER_HOURS в weather_publisher.py.
         DELETE_AFTER_HOURS_SETTING: 3
       run: |
-        python -c """ # <-- Изменено здесь: добавлены тройные двойные кавычки
+        python -c """ # <-- Здесь тройные двойные кавычки
 import os
 import json
 import asyncio
@@ -96,8 +96,8 @@ async def delete_messages():
 
             # Проверяем, прошло ли достаточно времени для удаления сообщения
             if datetime.now() - entry_time >= timedelta(hours=DELETE_AFTER_HOURS):
-                # Логируем попытку удаления сообщений. Теперь можно использовать одинарные кавычки внутри строки Python
-                print(f'Попытка удалить сообщения в чате {chat_id} (отправлены в {entry_time.strftime(\'%%Y-%%m-%%d %%H:%%M:%%S\')}): {message_ids}') 
+                # ИСПРАВЛЕННАЯ СТРОКА: используем ДВОЙНЫЕ кавычки для строки форматирования strftime
+                print(f'Попытка удалить сообщения в чате {chat_id} (отправлены в {entry_time.strftime("%%Y-%%m-%%d %%H:%%M:%%S")}): {message_ids}') 
                 for msg_id in message_ids:
                     try:
                         # Удаляем сообщение через Telegram API
@@ -129,4 +129,4 @@ async def delete_messages():
 
 if __name__ == '__main__':
     asyncio.run(delete_messages())
-""" # <-- Изменено здесь: добавлены тройные двойные кавычки в конце
+""" # <-- Здесь также тройные двойные кавычки
