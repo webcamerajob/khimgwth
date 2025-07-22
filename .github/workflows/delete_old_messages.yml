@@ -1,42 +1,47 @@
-name: Delete Old Weather Messages # Название рабочего процесса
+name: Delete Old Weather Messages
 
 on:
   schedule:
-    # Запускать каждый час в начале часа. 
-    # Это позволяет регулярно проверять и удалять сообщения,
-    # которые достигли порога удаления (например, 3 часа).
-    - cron: '55 * * * *' 
-  workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
-
+    - cron: '05 * * * *' 
+  workflow_dispatch:
+  push: # Добавляем триггер на push
+    branches:
+      - main # Или master, в зависимости от вашей основной ветки
+    paths:
+      - 'messages_to_delete.json' # Отслеживаем изменения в этом файле
+    
 jobs:
   delete:
-    runs-on: ubuntu-latest # Виртуальная машина, на которой будет выполняться задача
+    runs-on: ubuntu-latest
     
-    steps:
-    - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
-      uses: actions/checkout@v4
+    # Отменяем предыдущие запуски, если они ещё выполняются (например, от ручного триггера)
+    # Это может быть полезно, чтобы избежать одновременных запусков, если файл изменится несколько раз быстро
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
-    - name: Set up Python # Шаг 2: Настроить среду Python
+    steps:
+    - name: Checkout repository
+      # Используем actions/checkout@v4 с токеном, чтобы Git-операции работали корректно
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }} # Важно: передаем токен для checkout
+
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Указываем версию Python
+        python-version: '3.10'
 
-    - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
+    - name: Install dependencies
       run: |
-        pip install python-telegram-bot httpx # Устанавливаем библиотеки для взаимодействия с Telegram
+        pip install python-telegram-bot httpx
 
-    - name: Run Delete Old Messages Script # Шаг 4: Запустить отдельный Python-скрипт
+    - name: Run Delete Old Messages Script
       env:
-        # Передаем секрет токена Telegram-бота из настроек репозитория.
-        # Убедитесь, что TELEGRAM_BOT_TOKEN добавлен в Secrets вашего репозитория.
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        
-        # Имя файла, в котором хранятся ID сообщений для удаления.
-        # Должно совпадать с переменной MESSAGES_TO_DELETE_FILE в weather_publisher.py.
         MESSAGES_TO_DELETE_FILE_NAME: messages_to_delete.json 
-        
-        # Время задержки перед удалением сообщений в часах.
-        # Должно совпадать с переменной DELETE_AFTER_HOURS в weather_publisher.py.
         DELETE_AFTER_HOURS_SETTING: 3
-      run: | # <-- Это критическая строка. Содержимое скрипта должно быть выровнено под ней.
-        python delete_messages_script.py # <-- Теперь это *единственное*, что находится на этом уровне отступа.
+        # Передаём GITHUB_TOKEN в скрипт
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+      run: |
+        python delete_messages_script.py
