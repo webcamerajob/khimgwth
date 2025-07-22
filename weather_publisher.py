@@ -24,10 +24,10 @@ WATERMARK_FILE = "watermark.png" # Имя файла вашей вотермар
 WATERMARK_SCALE_FACTOR = 0.25 # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
 
 # --- Настройки кнопок ---
-AD_BUTTON_TEXT = "Реклама"
-AD_BUTTON_URL = "https://www.google.com/" # Замените на вашу ссылку для рекламы
-NEWS_BUTTON_TEXT = "Новости"
-NEWS_BUTTON_URL = "https://www.yandex.ru/" # Замените на вашу ссылку для новостей
+AD_BUTTON_TEXT = "Новости"
+AD_BUTTON_URL = "https://t.me/cambodiacriminal"
+NEWS_BUTTON_TEXT = "Реклама"
+NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 
 # --- Предустановленные данные о погоде (для TEST_MODE) ---
 PRESET_WEATHER_DATA = {
