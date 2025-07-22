@@ -421,10 +421,6 @@ async def main():
                 with open(path, 'rb') as f:
                     caption = None
                     reply_markup = None
-
-                    # Подпись только для первого фото
-                    if i == 0:
-                        caption = "Актуальная погода в Камбодже:"
                     
                     # Кнопки только для последнего фото
                     if i == len(generated_image_paths) - 1:
