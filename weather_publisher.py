@@ -1,3 +1,4 @@
+import subprocess
 import logging
 import requests
 import asyncio
@@ -150,35 +151,55 @@ def round_rectangle(draw, xy, radius, fill):
 def get_font(font_size: int):
     """
     Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
-    Возвращает объект шрифта или None, если ни один шрифт не загружен.
+    Использует fc-match для поиска лучшего эмодзи-шрифта.
     """
-    # 1. Попробуйте загрузить NotoColorEmoji.ttf из системной директории (более надежно после установки пакета)
-    # Этот путь является стандартным для Ubuntu после установки fonts-noto-color-emoji
-    system_emoji_font_path = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+    # 1. Попробуйте найти системный шрифт для эмодзи через fc-match
     try:
-        font = ImageFont.truetype(system_emoji_font_path, font_size, encoding="UTF-8")
-        logger.info(f"Шрифт '{system_emoji_font_path}' успешно загружен (с поддержкой эмодзи).")
+        # Ищем шрифт, который поддерживает семейство 'Noto Color Emoji'
+        # Команда fc-match --format=%{file} 'Noto Color Emoji' вернет путь к файлу
+        cmd = "fc-match --format=%{file} 'Noto Color Emoji'"
+        # В некоторых системах может быть просто 'Emoji' или 'Segoe UI Emoji'
+        
+        # Альтернативные варианты для cmd, если Noto Color Emoji не найдется:
+        # cmd = "fc-match --format=%{file} 'EmojiOne'" # Если установлен EmojiOne
+        # cmd = "fc-match --format=%{file} ':family=emoji:charset=4AE6'" # Поиск по Юникоду
+        
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
+        emoji_font_path = result.stdout.strip()
+
+        if os.path.exists(emoji_font_path):
+            font = ImageFont.truetype(emoji_font_path, font_size, encoding="UTF-8")
+            logger.info(f"Системный эмодзи-шрифт '{emoji_font_path}' успешно загружен.")
+            return font
+        else:
+            logger.warning(f"fc-match вернул путь '{emoji_font_path}', но файл не существует. Попытка загрузить другие шрифты.")
+
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Не удалось найти системный эмодзи-шрифт через fc-match: {e}. Попытка загрузить другие шрифты.")
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка при поиске эмодзи-шрифта через fc-match: {e}. Попытка загрузить другие шрифты.")
+
+
+    # 2. Если системный эмодзи-шрифт не найден, попробуйте шрифты из репозитория
+    # (если вы их туда загрузили)
+    # Попробуйте загрузить Arial (предполагая, что он находится рядом со скриптом)
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+        logger.info("Шрифт 'arial.ttf' успешно загружен.")
         return font
     except IOError:
-        logger.warning(f"Системный шрифт '{system_emoji_font_path}' не найден. Попытка загрузить 'arial.ttf'.")
-        # Если системный Noto не найден, попробуйте Arial (предполагая, что он рядом со скриптом)
+        logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
+        # Попробуйте DejaVuSans, который часто предустановлен в Linux
         try:
-            font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-            logger.info("Шрифт 'arial.ttf' успешно загружен.")
+            font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
+            logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
             return font
         except IOError:
-            logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-            # 3. Попробуйте DejaVuSans.ttf (часто предустановлен в Linux)
-            try:
-                font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
-                logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
-                return font
-            except IOError:
-                logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
-                # 4. В крайнем случае используйте стандартный шрифт Pillow
-                font = ImageFont.load_default()
-                logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
-                return font
+            logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
+            # Используйте стандартный шрифт Pillow
+            font = ImageFont.load_default()
+            logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
+            return font
     except Exception as e:
         logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
         font = ImageFont.load_default()
