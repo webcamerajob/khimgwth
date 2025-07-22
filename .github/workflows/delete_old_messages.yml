@@ -1,33 +1,36 @@
-name: Delete Old Weather Messages
+name: Delete Old Weather Messages # Название рабочего процесса
 
 on:
   schedule:
-    - cron: '48 * * * *' 
-  workflow_dispatch:
+    # Запускать каждый час в начале часа. 
+    # Это позволяет регулярно проверять и удалять сообщения,
+    # которые достигли порога удаления (например, 3 часа).
+    - cron: '49 * * * *' 
+  workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
 
 jobs:
   delete:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # Виртуальная машина, на которой будет выполняться задача
     
     steps:
-    - name: Checkout repository
+    - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up Python # Шаг 2: Настроить среду Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.10' # Указываем версию Python
 
-    - name: Install dependencies
+    - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
       run: |
-        pip install python-telegram-bot httpx
+        pip install python-telegram-bot httpx # Устанавливаем библиотеки для взаимодействия с Telegram
 
-    - name: Delete Old Messages
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        MESSAGES_TO_DELETE_FILE_NAME: messages_to_delete.json 
-        DELETE_AFTER_HOURS_SETTING: 3
-      run: |
+    - name: Delete Old Messages # Шаг 4: Запустить скрипт удаления старых сообщений
+      env: # <-- Убедитесь, что отступ здесь ровно 6 пробелов (2 отступа от "- name:")
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }} # <-- Отступ 8 пробелов
+        MESSAGES_TO_DELETE_FILE_NAME: messages_to_delete.json # <-- Отступ 8 пробелов
+        DELETE_AFTER_HOURS_SETTING: 3 # <-- Отступ 8 пробелов
+      run: | # <-- Отступ 6 пробелов
         python -c "
 import os
 import json
@@ -42,7 +45,7 @@ DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
 try:
     DELETE_AFTER_HOURS = int(DELETE_AFTER_HOURS_STR)
 except ValueError:
-    print(f'Предупреждение: Неверное значение DELETE_AFTER_HƠURS_SETTING: {DELETE_AFTER_HOURS_STR}. Использую значение по умолчанию: 3 часа.')
+    print(f'Предупреждение: Неверное значение DELETE_AFTER_HOURS_SETTING: {DELETE_AFTER_HOURS_STR}. Использую значение по умолчанию: 3 часа.')
     DELETE_AFTER_HOURS = 3
 
 
@@ -73,8 +76,7 @@ async def delete_messages():
             message_ids = entry['message_ids']
 
             if datetime.now() - entry_time >= timedelta(hours=DELETE_AFTER_HOURS):
-                # МАКСИМАЛЬНО УПРОЩЕННЫЙ ВЫВОД ДЛЯ ИЗБЕЖАНИЯ ОШИБОК YAML
-                # Используем конкатенацию строк и тройные кавычки для print, если необходимо
+                # Максимально упрощенный вывод для избежания ошибок YAML
                 print('Попытка удалить сообщения в чате ' + str(chat_id) + 
                       ' (отправлены в ' + entry_time.strftime('%%Y-%%m-%%d %%H:%%M:%%S') + 
                       '): ' + str(message_ids))
