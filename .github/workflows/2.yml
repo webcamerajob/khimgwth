@@ -25,12 +25,10 @@ jobs:
       run: |
         pip install requests python-telegram-bot Pillow httpx
 
-    # Шаг с установкой системного шрифта удален, так как эмодзи больше не используются
-    # и Arial/DejaVuSans будут найдены автоматически или из вашего репозитория.
-
     - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
       run: |
-        mkdir -p backgrounds/Пномпень
+        mkdir -p backgrounds/Общий
+        mkdir -p backgrounds/Пномпень # Для запасного фона
         mkdir -p backgrounds/Сиануквиль
         mkdir -p backgrounds/Сиемреап
         # Примечание: Убедитесь, что ваши фоновые изображения находятся в этих папках
