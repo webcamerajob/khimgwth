@@ -4,7 +4,7 @@ import asyncio
 import os
 from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot, InputMediaPhoto
+from telegram import Bot # InputMediaPhoto больше не используется напрямую для отправки, поэтому убрал
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Настройка логирования
@@ -336,12 +336,12 @@ async def main():
     """
     Основная функция, которая запускает скрипт.
     Собирает данные для каждого города, генерирует изображения,
-    а затем отправляет их как медиагруппу с кнопками.
+    а затем отправляет их по одному, прикрепляя кнопки к последнему фото.
     """
     global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
     
-    # Список для хранения путей к сгенерированным изображениям для медиагруппы
+    # Список для хранения путей к сгенерированным изображениям
     generated_image_paths: List[str] = []
 
     # Проверка наличия всех необходимых переменных окружения
@@ -407,11 +407,9 @@ async def main():
         
         await asyncio.sleep(0.5) # Небольшая задержка между обработкой городов
 
-    # Если есть сгенерированные изображения, отправляем их как медиагруппу
+    # Если есть сгенерированные изображения, отправляем их по одному
     if generated_image_paths:
-        media_to_send: List[InputMediaPhoto] = []
-        
-        # Создаем кнопки
+        # Создаем кнопки один раз
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
              InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]
@@ -419,26 +417,33 @@ async def main():
 
         for i, path in enumerate(generated_image_paths):
             try:
+                # Используем 'with open' для корректного закрытия файла
                 with open(path, 'rb') as f:
-                    # Для первого фото добавляем подпись и reply_markup
+                    caption = None
+                    reply_markup = None
+
+                    # Подпись только для первого фото
                     if i == 0:
-                        media_to_send.append(InputMediaPhoto(media=f, caption="Актуальная погода в Камбодже:", reply_markup=keyboard))
-                    else:
-                        media_to_send.append(InputMediaPhoto(media=f)) # Для остальных фото без подписи и кнопок
+                        caption = "Актуальная погода в Камбодже:"
+                    
+                    # Кнопки только для последнего фото
+                    if i == len(generated_image_paths) - 1:
+                        reply_markup = keyboard
+
+                    await bot.send_photo(
+                        chat_id=target_chat_id, 
+                        photo=f, 
+                        caption=caption, 
+                        reply_markup=reply_markup
+                    )
+                    logger.info(f"Фото {path} успешно отправлено.")
+                
+                await asyncio.sleep(1) # Небольшая задержка между отправкой фото, чтобы не спамить
             except FileNotFoundError:
                 logger.error(f"Файл изображения не найден: {path}. Пропускаю его.")
-                continue
-
-        if media_to_send:
-            try:
-                # Отправляем медиагруппу. reply_markup теперь прикреплен к первому InputMediaPhoto
-                await bot.send_media_group(chat_id=target_chat_id, media=media_to_send)
-                logger.info(f"Медиагруппа из {len(media_to_send)} изображений успешно отправлена.")
             except Exception as e:
-                logger.error(f"Ошибка при отправке медиагруппы: {e}")
-                await bot.send_message(chat_id=target_chat_id, text=f"❌ Ошибка при отправке изображений погоды.", parse_mode='HTML')
-        else:
-            await bot.send_message(chat_id=target_chat_id, text="Не удалось создать ни одного изображения для отправки.", parse_mode='HTML')
+                logger.error(f"Ошибка при отправке фото {path}: {e}")
+        
     else:
         await bot.send_message(chat_id=target_chat_id, text="Не удалось сгенерировать изображения погоды для отправки.", parse_mode='HTML')
 
