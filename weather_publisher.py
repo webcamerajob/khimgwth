@@ -1,4 +1,3 @@
-import subprocess
 import logging
 import requests
 import asyncio
@@ -151,57 +150,43 @@ def round_rectangle(draw, xy, radius, fill):
 def get_font(font_size: int):
     """
     Пытается загрузить шрифт, подходящий для кириллицы и эмодзи.
-    Использует fc-match для поиска лучшего эмодзи-шрифта.
+    Возвращает объект шрифта или None, если ни один шрифт не загружен.
     """
-    # 1. Попробуйте найти системный шрифт для эмодзи через fc-match
+    # 1. Попробуйте загрузить системный шрифт Noto Color Emoji.ttf
+    # (Он устанавливается с помощью apt-get install fonts-noto-color-emoji)
+    system_noto_emoji_path = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
     try:
-        # Ищем шрифт, который поддерживает семейство 'Noto Color Emoji'
-        # Команда fc-match --format=%{file} 'Noto Color Emoji' вернет путь к файлу
-        cmd = "fc-match --format=%{file} 'Noto Color Emoji'"
-        # В некоторых системах может быть просто 'Emoji' или 'Segoe UI Emoji'
-        
-        # Альтернативные варианты для cmd, если Noto Color Emoji не найдется:
-        # cmd = "fc-match --format=%{file} 'EmojiOne'" # Если установлен EmojiOne
-        # cmd = "fc-match --format=%{file} ':family=emoji:charset=4AE6'" # Поиск по Юникоду
-        
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
-        emoji_font_path = result.stdout.strip()
-
-        if os.path.exists(emoji_font_path):
-            font = ImageFont.truetype(emoji_font_path, font_size, encoding="UTF-8")
-            logger.info(f"Системный эмодзи-шрифт '{emoji_font_path}' успешно загружен.")
-            return font
-        else:
-            logger.warning(f"fc-match вернул путь '{emoji_font_path}', но файл не существует. Попытка загрузить другие шрифты.")
-
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.warning(f"Не удалось найти системный эмодзи-шрифт через fc-match: {e}. Попытка загрузить другие шрифты.")
+        font = ImageFont.truetype(system_noto_emoji_path, font_size, encoding="UTF-8")
+        logger.info(f"Системный эмодзи-шрифт '{system_noto_emoji_path}' успешно загружен.")
+        return font
+    except IOError:
+        logger.warning(f"Системный шрифт '{system_noto_emoji_path}' не найден. Попытка загрузить 'arial.ttf'.")
     except Exception as e:
-        logger.error(f"Неизвестная ошибка при поиске эмодзи-шрифта через fc-match: {e}. Попытка загрузить другие шрифты.")
+        # Ловим ошибку invalid pixel size здесь, но продолжаем попытки с другими шрифтами
+        logger.warning(f"Ошибка при загрузке системного эмодзи-шрифта '{system_noto_emoji_path}': {e}. Попытка загрузить 'arial.ttf'.")
 
 
-    # 2. Если системный эмодзи-шрифт не найден, попробуйте шрифты из репозитория
-    # (если вы их туда загрузили)
-    # Попробуйте загрузить Arial (предполагая, что он находится рядом со скриптом)
+    # 2. Если системный эмодзи-шрифт не загружен, попробуйте Arial.ttf
     try:
+        # Предполагается, что arial.ttf лежит рядом со скриптом
         font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
         logger.info("Шрифт 'arial.ttf' успешно загружен.")
         return font
     except IOError:
         logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-        # Попробуйте DejaVuSans, который часто предустановлен в Linux
+        # 3. Попробуйте DejaVuSans.ttf (часто предустановлен в Linux)
         try:
             font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
             logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
             return font
         except IOError:
             logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
-            # Используйте стандартный шрифт Pillow
+            # 4. В крайнем случае используйте стандартный шрифт Pillow
             font = ImageFont.load_default()
             logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
             return font
     except Exception as e:
-        logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
+        logger.error(f"Неизвестная ошибка при загрузке шрифта (Arial/DejaVuSans): {e}. Используется стандартный шрифт Pillow.")
         font = ImageFont.load_default()
         logger.warning("Используется стандартный шрифт Pillow. Эмодзи и некоторые символы могут отображаться некорректно.")
         return font
@@ -243,12 +228,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
 
         # Вычисляем размер текста для плашки
         try:
-            # text_bbox = draw.multiline_textbbox((0, 0), weather_text, font=font, spacing=10)
-            # text_width = text_bbox[2] - text_bbox[0]
-            # text_height = text_bbox[3] - text_bbox[1]
-            
             # Более надежный способ получить размер текста, который работает с multiline_textsize
-            # Это может быть более точным для старых версий Pillow или при сложном тексте
             text_width, text_height = draw.multiline_textsize(weather_text, font=font, spacing=10)
 
         except AttributeError: # Fallback для очень старых версий Pillow
