@@ -25,11 +25,10 @@ jobs:
       run: |
         pip install requests python-telegram-bot Pillow httpx
 
-    - name: Install Noto Color Emoji font # Шаг 4: Установить системный шрифт для эмодзи
+    - name: Install Twemoji Mozilla font # Шаг 4: Установить системный шрифт для эмодзи (альтернатива)
       run: |
         sudo apt-get update
-        sudo apt-get install -y fonts-noto-color-emoji
-        sudo fc-cache -f -v # Принудительно обновить кэш шрифтов Fontconfig (необязательно, но полезно)
+        sudo apt-get install -y fonts-twemoji-mozilla # Устанавливаем Twemoji Mozilla
 
     - name: Create backgrounds folders # Шаг 5: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
       run: |
