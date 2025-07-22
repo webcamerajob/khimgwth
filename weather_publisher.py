@@ -193,16 +193,17 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
 
         wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
-        pressure_kpa = weather_data['Pressure']['Metric']['Value'] * 0.1
+        # Давление удалено
 
         weather_text_lines = [
             f"Погода в {city_name.capitalize()}:",
+            "", # Добавленная пустая строка для отступа
             f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
             f"{weather_data['WeatherText']}",
             f"Влажность: {weather_data['RelativeHumidity']}%",
             f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
-            f"Давление: {pressure_kpa:.1f} кПа",
+            # Строка с давлением удалена
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -223,6 +224,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
                 break
             
             # Используем getbbox для более точного измерения размера текста
+            # spacing = 10 для многострочного текста
             bbox = draw.textbbox((0, 0), weather_text, font=test_font, spacing=10)
             text_width_current = bbox[2] - bbox[0]
 
@@ -244,9 +246,9 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         
         plaque_height = text_height + 2 * padding
 
-        # Позиционирование плашки (по центру по горизонтали, небольшой отступ сверху)
+        # Позиционирование плашки (по центру по горизонтали и вертикали)
         plaque_x1 = (width - plaque_width) // 2
-        plaque_y1 = int(height * 0.05) # Небольшой отступ сверху
+        plaque_y1 = (height - plaque_height) // 2 # Вертикальное центрирование
         plaque_x2 = plaque_x1 + plaque_width
         plaque_y2 = plaque_y1 + plaque_height
 
@@ -261,8 +263,10 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         img.paste(plaque_img, (0, 0), plaque_img)
 
         # Рисуем текст по центру плашки
+        # text_x: уже вычислен как центр горизонтально
+        # text_y: вертикальное центрирование
         text_x = plaque_x1 + (plaque_width - text_width) // 2
-        text_y = plaque_y1 + padding
+        text_y = plaque_y1 + (plaque_height - text_height) // 2 # Вертикальное центрирование текста
         
         draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
 
