@@ -1,0 +1,51 @@
+name: Publish Weather Updates
+
+on:
+  workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
+  schedule:
+    # Запускать каждый день в 07:00 и 19:00 по UTC (это может быть 14:00 и 02:00 по времени Пномпеня/Сиануквиля/Сиемреапа в зависимости от DST)
+    # Используйте https://crontab.guru/ для настройки времени по UTC
+    - cron: '0 0 * * *' # Пример: каждый день в полночь UTC
+    - cron: '0 12 * * *' # Пример: каждый день в полдень UTC (для двух раз в день)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # Запускать на чистой виртуальной машине Ubuntu
+
+    steps:
+    - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
+      uses: actions/checkout@v4
+
+    - name: Set up Python # Шаг 2: Настроить среду Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10' # Рекомендуется указывать конкретную версию Python
+
+    - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
+      run: |
+        pip install requests python-telegram-bot Pillow httpx # Добавляем Pillow
+
+    - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
+      run: |
+        mkdir -p backgrounds/Пномпень
+        mkdir -p backgrounds/Сиануквиль
+        mkdir -p backgrounds/Сиемреап
+        # Примечание: Если ваши фоновые изображения хранятся в репозитории,
+        # этот шаг просто гарантирует, что папки существуют.
+        # Если вы хотите, чтобы изображения были частью репозитория,
+        # убедитесь, что они находятся в этих папках перед push.
+
+    - name: Run Python script # Шаг 5: Запустить ваш Python-скрипт
+      env:
+        # Передаем секреты GitHub в переменные окружения для скрипта
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }}
+        TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
+        # Для тестового режима: установите TEST_MODE=True в самом Python скрипте
+        # Чтобы использовать тестовый режим из файла workflow, можно добавить:
+        # TEST_MODE: "True" # Или "False"
+      run: python weather_publisher.py
+      # Примечание о TEST_MODE: Если вы хотите управлять TEST_MODE из файла YML,
+      # вам нужно будет изменить python-скрипт, чтобы он читал os.getenv("TEST_MODE")
+      # и преобразовывал его в булево значение (например, TEST_MODE = os.getenv("TEST_MODE") == "True").
+      # Пока что TEST_MODE контролируется внутри weather_publisher.py
