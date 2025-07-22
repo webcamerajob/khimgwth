@@ -1,0 +1,32 @@
+name: Send Weather to Telegram
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # каждый день в 11:00 по Пномпеню (UTC+7)
+  workflow_dispatch:
+
+jobs:
+  send-weather:
+    runs-on: ubuntu-latest
+
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHANNEL_NAME: ${{ secrets.TELEGRAM_CHANNEL_NAME }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install system fonts
+        run: sudo apt-get install -y fonts-dejavu
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot
+        run: python weather_bot.py
