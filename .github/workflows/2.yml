@@ -25,8 +25,8 @@ jobs:
       run: |
         pip install requests python-telegram-bot Pillow httpx
 
-    # Шаг с установкой системного шрифта (fonts-noto-color-emoji или fonts-twemoji-mozilla) удален,
-    # так как теперь мы помещаем шрифт NotoColorEmoji.ttf напрямую в репозиторий.
+    # Шаг с установкой системного шрифта удален, так как эмодзи больше не используются
+    # и Arial/DejaVuSans будут найдены автоматически или из вашего репозитория.
 
     - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
       run: |
