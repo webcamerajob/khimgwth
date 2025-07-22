@@ -9,7 +9,7 @@ import subprocess # Для выполнения команд Git
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json')
 DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
-GITHUB_TOKEN = os.getenv('GITHUB_TOKEN') # Токен для авто-коммита
+GH_TOKEN = os.getenv('GH_TOKEN') # Токен для авто-коммита
 GIT_COMMIT_EMAIL = os.getenv('GIT_COMMIT_EMAIL', 'github-actions[bot]@users.noreply.github.com')
 GIT_COMMIT_NAME = os.getenv('GIT_COMMIT_NAME', 'github-actions[bot]')
 # --- Конец конфигурации ---
@@ -76,7 +76,7 @@ async def delete_messages_and_commit():
             print(f'Файл {MESSAGES_FILE} обновлен. Осталось записей: {len(messages_to_keep)}.')
             
             # --- Логика авто-коммита ---
-            if GITHUB_TOKEN:
+            if GH_TOKEN:
                 print("Начинаю процесс авто-коммита...")
                 try:
                     # Настройка Git пользователя
@@ -98,7 +98,7 @@ async def delete_messages_and_commit():
                     print(f'Изменения закоммичены: "{commit_message}"')
 
                     # Отправляем изменения на GitHub
-                    repo_url = f"https://{GITHUB_TOKEN}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git"
+                    repo_url = f"https://{GH_TOKEN}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git"
                     subprocess.run(['git', 'push', repo_url], check=True)
                     print('Изменения успешно отправлены на GitHub.')
 
@@ -109,7 +109,7 @@ async def delete_messages_and_commit():
                 except Exception as e:
                     print(f'Непредвиденная ошибка при авто-коммите: {e}')
             else:
-                print("GITHUB_TOKEN не установлен, авто-коммит пропущен.")
+                print("GH_TOKEN не установлен, авто-коммит пропущен.")
             # --- Конец логики авто-коммита ---
 
         except Exception as e:
