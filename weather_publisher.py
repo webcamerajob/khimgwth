@@ -101,8 +101,6 @@ async def get_current_weather(location_key: str) -> Dict | None:
     Получает текущие погодные условия для заданного Location Key.
     """
     if TEST_MODE:
-        # В тестовом режиме location_key - это "TEST_KEY",
-        # поэтому используем глобальную переменную city_to_process для получения данных
         if city_to_process in PRESET_WEATHER_DATA:
             logger.info(f"Используются предустановленные данные для: {city_to_process}")
             return PRESET_WEATHER_DATA.get(city_to_process)
@@ -149,6 +147,35 @@ def round_rectangle(draw, xy, radius, fill):
     draw.ellipse((x1, y2 - radius * 2, x1 + radius * 2, y2), fill=fill)
     draw.ellipse((x2 - radius * 2, y2 - radius * 2, x2, y2), fill=fill)
 
+def get_font(font_size: int):
+    """
+    Пытается загрузить шрифт, подходящий для кириллицы.
+    Возвращает объект шрифта или None, если ни один шрифт не загружен.
+    """
+    # Попробуйте загрузить Arial (предполагая, что он находится рядом со скриптом или установлен)
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+        logger.info("Шрифт 'arial.ttf' успешно загружен.")
+        return font
+    except IOError:
+        logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
+        # Попробуйте DejaVuSans, который часто предустановлен в Linux
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
+            logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
+            return font
+        except IOError:
+            logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Попытка загрузить стандартный шрифт Pillow.")
+            # Используйте стандартный шрифт Pillow
+            font = ImageFont.load_default()
+            logger.warning("Используется стандартный шрифт Pillow. Возможно, не все символы будут отображены корректно.")
+            return font
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
+        font = ImageFont.load_default()
+        logger.warning("Используется стандартный шрифт Pillow. Возможно, не все символы будут отображены корректно.")
+        return font
+
 
 def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     """
@@ -161,24 +188,13 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     try:
         img = Image.open(background_path).convert("RGB")
         width, height = img.size
+        
+        # Инициализируем объект draw ДО загрузки шрифта
+        draw = ImageDraw.Draw(img) 
 
-        # Определяем размер шрифта
-        font_size = int(height * 0.04)
-        font = None
-        try:
-            # Попробуйте использовать шрифт, который поддерживает кириллицу (например, Arial)
-            # Убедитесь, что 'arial.ttf' находится в той же папке, что и скрипт, или укажите полный путь.
-            font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-            logger.info("Шрифт 'arial.ttf' успешно загружен.")
-        except IOError as e:
-            logger.error(f"Ошибка загрузки шрифта 'arial.ttf': {e}. Попытка использовать стандартный шрифт.")
-            font = ImageFont.load_default()
-            logger.warning("Используется стандартный шрифт. Возможно, не все символы будут отображены корректно.")
-        except Exception as e:
-            logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Попытка использовать стандартный шрифт.")
-            font = ImageFont.load_default()
-            logger.warning("Используется стандартный шрифт. Возможно, не все символы будут отображены корректно.")
-
+        # Определяем размер шрифта и пытаемся его загрузить
+        font_size = int(height * 0.04) # 4% от высоты изображения
+        font = get_font(font_size) # Используем новую функцию для загрузки шрифта
 
         wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
@@ -188,21 +204,25 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             f"☀️ Погода в {city_name.capitalize()}:",
             f"🌡️ Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
             f"🤔 Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
-            f"☀️/☁️ {weather_data['WeatherText']}",
+            f"☀️/☁️ {weather_data['WeatherText']}", # Статичный смайл для состояния
             f"💧 Влажность: {weather_data['RelativeHumidity']}%",
             f"🪁 Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
             f"📊 Давление: {pressure_kpa:.1f} кПа",
         ]
         weather_text = "\n".join(weather_text_lines)
 
-        # Вычисляем размер текста
-        # getmask() возвращает битмап маску, box[2] и box[3] дают ширину и высоту
+        # Вычисляем размер текста для плашки
         try:
-            text_bbox = draw.multiline_textbbox((0, 0), weather_text, font=font, spacing=10)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-        except AttributeError: # Для старых версий Pillow, где нет multiline_textbbox
-             logger.warning("Используется старая версия Pillow без multiline_textbbox. Расчет размеров текста может быть неточным.")
+            # text_bbox = draw.multiline_textbbox((0, 0), weather_text, font=font, spacing=10)
+            # text_width = text_bbox[2] - text_bbox[0]
+            # text_height = text_bbox[3] - text_bbox[1]
+            
+            # Более надежный способ получить размер текста, который работает с multiline_textsize
+            # Это может быть более точным для старых версий Pillow или при сложном тексте
+            text_width, text_height = draw.multiline_textsize(weather_text, font=font, spacing=10)
+
+        except AttributeError: # Fallback для очень старых версий Pillow
+             logger.warning("Используется старая версия Pillow без multiline_textsize. Расчет размеров текста может быть неточным.")
              # Примерная оценка размера текста для старых версий:
              text_width = max(font.getlength(line) for line in weather_text_lines)
              text_height = len(weather_text_lines) * (font_size + 10) # 10 - примерный spacing
@@ -215,8 +235,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         plaque_width = text_width + 2 * padding
         plaque_height = text_height + 2 * padding
 
-        # Позиционирование плашки (центр изображения, или верхний левый угол)
-        # Давайте разместим в верхнем левом углу с небольшим отступом
+        # Позиционирование плашки (верхний левый угол с небольшим отступом)
         plaque_x1 = int(width * 0.05)
         plaque_y1 = int(height * 0.05)
         plaque_x2 = plaque_x1 + plaque_width
