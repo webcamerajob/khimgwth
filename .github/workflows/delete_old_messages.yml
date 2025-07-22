@@ -1,44 +1,7 @@
-name: Delete Old Weather Messages
-
-on:
-  schedule:
-    # Запускать каждый час. Это позволит проверять и удалять сообщения,
-    # отправленные ~3 часа назад. Точное время зависит от выполнения Actions.
-    # '0 * * * *' означает "в 0 минут каждого часа"
-    - cron: '32 * * * *' 
-  workflow_dispatch: # Позволяет запускать вручную для тестирования
-
-jobs:
-  delete:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Install dependencies
-      run: |
-        pip install python-telegram-bot httpx
-
-    - name: Delete Old Messages
+- name: Delete Old Messages
       env:
-        # Передаем секрет токена бота
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        # Загружаем настройки из weather_publisher.py для согласованности
-        # ВНИМАНИЕ: Если weather_publisher.py изменится, то для этого Action нужно будет
-        # вручную обновить значения, если они используются здесь как константы.
-        # Более надежно - вынести эти настройки в отдельный файл config.py и импортировать.
-        # Но для простоты сейчас используем константы, как они вынесены в weather_publisher.py
-        
-        # Переменные, которые скрипт в delete_old_messages.yml будет использовать:
-        # Имя файла для сохранения ID сообщений. Должно совпадать с MESSAGES_TO_DELETE_FILE в weather_publisher.py
         MESSAGES_TO_DELETE_FILE_NAME: messages_to_delete.json 
-        # Время задержки перед удалением сообщений (в часах). Должно совпадать с DELETE_AFTER_HOURS
         DELETE_AFTER_HOURS_SETTING: 3
       run: |
         python -c "
@@ -48,7 +11,6 @@ import asyncio
 from datetime import datetime, timedelta
 from telegram import Bot
 
-# Получаем настройки из переменных окружения, переданных из YAML
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 MESSAGES_FILE = os.getenv('MESSAGES_TO_DELETE_FILE_NAME', 'messages_to_delete.json')
 DELETE_AFTER_HOURS_STR = os.getenv('DELETE_AFTER_HOURS_SETTING', '3')
@@ -87,25 +49,23 @@ async def delete_messages():
             message_ids = entry['message_ids']
 
             if datetime.now() - entry_time >= timedelta(hours=DELETE_AFTER_HOURS):
-                print(f'Попытка удалить сообщения в чате {chat_id} (отправлены в {entry_time.strftime('%Y-%m-%d %H:%M:%S')}): {message_ids}')
+                # ЭТО И ЕСТЬ ИСПРАВЛЕННАЯ СТРОКА (строка 45 или около того, в зависимости от точного форматирования)
+                print(f'Попытка удалить сообщения в чате {chat_id} (отправлены в {entry_time.strftime('%%Y-%%m-%%d %%H:%%M:%%S')}): {message_ids}') 
                 for msg_id in message_ids:
                     try:
                         await bot.delete_message(chat_id=chat_id, message_id=msg_id)
                         print(f'Удалено сообщение ID {msg_id} в чате {chat_id}.')
-                        await asyncio.sleep(0.1) # Небольшая задержка
+                        await asyncio.sleep(0.1)
                     except Exception as e:
-                        # Ошибки, такие как MESSAGE_TO_DELETE_NOT_FOUND (если сообщение уже удалено вручную)
-                        # обрабатываются здесь, чтобы не прерывать цикл
                         print(f'Ошибка при удалении сообщения ID {msg_id} в чате {chat_id}: {e}')
             else:
-                messages_to_keep.append(entry) # Оставляем сообщения, которые еще не нужно удалять
+                messages_to_keep.append(entry)
         except KeyError as e:
             print(f'Пропущена поврежденная запись в {MESSAGES_FILE} (отсутствует ключ: {e}).')
         except ValueError as e:
             print(f'Пропущена запись с неверным форматом даты в {MESSAGES_FILE}: {e}.')
 
 
-    # Перезаписываем файл, оставляя только те записи, которые еще не были удалены
     try:
         with open(MESSAGES_FILE, 'w', encoding='utf-8') as f:
             json.dump(messages_to_keep, f, ensure_ascii=False, indent=4)
