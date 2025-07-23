@@ -256,15 +256,15 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         draw = ImageDraw.Draw(img) 
 
         # Исправлено: Правильный доступ к данным о ветре
-        wind_direction_text = weather_data['Localized']
+        wind_direction_text = weather_data['Localized'] # Доступ к вложенному словарю
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
         # Исправлено: Правильное форматирование f-строк и доступ к данным
         weather_text_lines =['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
-            f"{weather_data}",
-            f"Влажность: {weather_data}%",
-            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч",
+            f"{weather_data}", # Доступ к WeatherText
+            f"Влажность: {weather_data}%", # Доступ к RelativeHumidity
+            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч", # Доступ к вложенному словарю
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -438,7 +438,4 @@ async def main():
         weather_data = None
         if TEST_MODE:
             weather_data = PRESET_WEATHER_DATA.get(city)
-            if not weather_data:
-                logger.error(f"Предустановленные данные для города {city} не найдены.")
-        else:
-       
+            if not weather_data
