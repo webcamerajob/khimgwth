@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # --- Настройки ---
 MESSAGE_IDS_FILE = "message_ids.yml"  # Файл для хранения ID сообщений
-DELETE_AFTER_HOURS = 3                # Через сколько часов удалять сообщения
+DELETE_AFTER_MINUTES = 1               # Через сколько часов удалять сообщения
 
 async def main():
     """
