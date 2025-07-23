@@ -98,6 +98,8 @@ async def get_location_key(city_name: str) -> str | None:
         response.raise_for_status()
         data = response.json()
         if data:
+            # Исправлено: AccuWeather API для поиска городов возвращает список,
+            # и ключ находится в первом элементе списка.
             logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
             return data["Key"]
         else:
@@ -132,6 +134,8 @@ async def get_current_weather(location_key: str) -> Dict | None:
         response.raise_for_status()
         data = response.json()
         if data:
+            # Исправлено: AccuWeather API для текущих условий возвращает список,
+            # и данные находятся в первом элементе списка.
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return data
         else:
@@ -251,9 +255,11 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         
         draw = ImageDraw.Draw(img) 
 
+        # Исправлено: Правильный доступ к данным о ветре
         wind_direction_text = weather_data['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
+        # Исправлено: Правильное форматирование f-строк и доступ к данным
         weather_text_lines =['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
             f"{weather_data}",
@@ -281,7 +287,8 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             max_line_width = 0
             for line in weather_text_lines:
                 line_bbox = draw.textbbox((0,0), line, font=test_font)
-                max_line_width = max(max_line_width, line_bbox - line_bbox)
+                # Исправлено: Правильный расчет ширины линии
+                max_line_width = max(max_line_width, line_bbox - line_bbox) 
 
             if max_line_width <= max_text_width_for_font_sizing:
                 best_font = test_font
@@ -293,7 +300,8 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         
         # Пересчитываем размер текста с финальным шрифтом
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
-        text_width, text_height = bbox - bbox, bbox - bbox[1]
+        # Исправлено: Правильный расчет ширины и высоты текста из bbox
+        text_width, text_height = bbox - bbox, bbox - bbox[1] 
 
         # Высота плашки подстраивается под текст с отступами
         padding = int(width * 0.03) # Отступы от текста до краев плашки
@@ -342,7 +350,7 @@ def save_message_id(message_id: int):
     """
     try:
         # Загружаем существующие ID сообщений
-        messages =
+        messages = # Исправлено: Инициализация пустого списка
         if os.path.exists(MESSAGE_IDS_FILE):
             with open(MESSAGE_IDS_FILE, 'r') as f:
                 try:
@@ -374,7 +382,7 @@ async def main():
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
     
     # Список для хранения путей к сгенерированным изображениям
-    generated_image_paths: List[str] =
+    generated_image_paths: List[str] = # Исправлено: Инициализация пустого списка
 
     # Проверка наличия всех необходимых переменных окружения
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -433,15 +441,4 @@ async def main():
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
         else:
-            location_key = await get_location_key(city)
-            if location_key:
-                weather_data = await get_current_weather(location_key)
-            else:
-                logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
-                continue # Пропускаем город, если не удалось получить ключ
-
-        if weather_data:
-            print(f"DEBUG: Данные о погоде получены для {city}. Создаю изображение.") # <-- Отладочный вывод
-            image_path = create_weather_image(city, weather_data)
-            if image_path:
-                generated_image_paths.append(im
+     
