@@ -288,7 +288,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             for line in weather_text_lines:
                 line_bbox = draw.textbbox((0,0), line, font=test_font)
                 # Исправлено: Правильный расчет ширины линии
-                max_line_width = max(max_line_width, line_bbox - line_bbox) 
+                max_line_width = max(max_line_width, line_bbox - line_bbox)
 
             if max_line_width <= max_text_width_for_font_sizing:
                 best_font = test_font
@@ -301,7 +301,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         # Пересчитываем размер текста с финальным шрифтом
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         # Исправлено: Правильный расчет ширины и высоты текста из bbox
-        text_width, text_height = bbox - bbox, bbox - bbox[1] 
+        text_width, text_height = bbox - bbox, bbox - bbox[1]
 
         # Высота плашки подстраивается под текст с отступами
         padding = int(width * 0.03) # Отступы от текста до краев плашки
@@ -441,4 +441,4 @@ async def main():
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
         else:
-     
+       
