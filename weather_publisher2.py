@@ -98,9 +98,10 @@ async def get_location_key(city_name: str) -> str | None:
         response.raise_for_status()
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
-            # Исправлено: Доступ к первому элементу списка
+            # Исправлено: AccuWeather API для поиска городов возвращает список,
+            # и ключ находится в первом элементе списка.
             logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
-            return data["Key"]
+            return data["Key"] # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -133,9 +134,10 @@ async def get_current_weather(location_key: str) -> Dict | None:
         response.raise_for_status()
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
-            # Исправлено: Доступ к первому элементу списка
+            # Исправлено: AccuWeather API для текущих условий возвращает список,
+            # и данные находятся в первом элементе списка.
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data
+            return data # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -254,10 +256,13 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         draw = ImageDraw.Draw(img) 
 
         # Исправлено: Правильный доступ к данным о ветре
+        # weather_data - это словарь, содержащий данные о погоде.
+        # Доступ к вложенным словарям должен быть через их ключи.
         wind_direction_text = weather_data['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
         # Исправлено: Правильное форматирование f-строк и доступ к данным
+        # Каждая строка должна быть корректной f-строкой.
         weather_text_lines =['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
             f"{weather_data}",
@@ -286,7 +291,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             for line in weather_text_lines:
                 line_bbox = draw.textbbox((0,0), line, font=test_font)
                 # Исправлено: Правильный расчет ширины линии
-                max_line_width = max(max_line_width, line_bbox - line_bbox)
+                max_line_width = max(max_line_width, line_bbox - line_bbox) # bbox возвращает (x1, y1, x2, y2)
 
             if max_line_width <= max_text_width_for_font_sizing:
                 best_font = test_font
@@ -299,7 +304,8 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         # Пересчитываем размер текста с финальным шрифтом
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         # Исправлено: Правильный расчет ширины и высоты текста из bbox
-        text_width, text_height = bbox - bbox, bbox - bbox[1]
+        text_width = bbox - bbox # Ширина = x2 - x1
+        text_height = bbox - bbox[1] # Высота = y2 - y1
 
         # Высота плашки подстраивается под текст с отступами
         padding = int(width * 0.03) # Отступы от текста до краев плашки
@@ -438,4 +444,89 @@ async def main():
             weather_data = PRESET_WEATHER_DATA.get(city)
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
+        else:
+            location_key = await get_location_key(city)
+            if location_key:
+                weather_data = await get_current_weather(location_key)
+            else:
+                logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
+                continue # Пропускаем город, если не удалось получить ключ
+
+        if weather_data:
+            print(f"DEBUG: Данные о погоде получены для {city}. Создаю изображение.") # <-- Отладочный вывод
+            image_path = create_weather_image(city, weather_data)
+            if image_path:
+                generated_image_paths.append(image_path)
+                print(f"DEBUG: Изображение создано для {city}: {image_path}") # <-- Отладочный вывод
+            else:
+                logger.error(f"Не удалось создать изображение погоды для {city}. Пропускаю этот город.")
+                print(f"DEBUG: ОШИБКА: Не удалось создать изображение для {city}.") # <-- Отладочный вывод
+        else:
+            logger.warning(f"Не удалось получить данные о погоде для {city}. Пропускаю этот город.")
+            print(f"DEBUG: ОШИБКА: Нет данных о погоде для {city}.") # <-- Отладочный вывод
         
+        await asyncio.sleep(0.5) # Небольшая задержка между обработкой городов
+    
+    print(f"DEBUG: Всего сгенерировано изображений: {len(generated_image_paths)}") # <-- Отладочный вывод
+
+    # Если есть сгенерированные изображения, отправляем их по одному
+    if generated_image_paths:
+        print("DEBUG: Начинаю отправку изображений в Telegram.") # <-- Отладочный вывод
+        # Создаем кнопки один раз
+        # Исправлено: Правильная инициализация InlineKeyboardMarkup с кнопками
+        keyboard = InlineKeyboardMarkup()
+
+        for i, path in enumerate(generated_image_paths):
+            print(f"DEBUG: Отправка фото {i+1}/{len(generated_image_paths)}: {path}") # <-- Отладочный вывод
+            try:
+                # Используем 'with open' для корректного закрытия файла
+                with open(path, 'rb') as f:
+                    caption = None
+                    reply_markup = None
+                    
+                    # Кнопки только для последнего фото
+                    if i == len(generated_image_paths) - 1:
+                        reply_markup = keyboard
+
+                    message = await bot.send_photo( # Сохраняем объект сообщения
+                        chat_id=target_chat_id, 
+                        photo=f, 
+                        caption=caption, 
+                        reply_markup=reply_markup
+                    )
+                    save_message_id(message.message_id) # Сохраняем ID отправленного сообщения
+                    logger.info(f"Фото {path} успешно отправлено. Message ID: {message.message_id}")
+                    print(f"DEBUG: Сообщение успешно отправлено и ID сохранено: {message.message_id}") # <-- Отладочный вывод
+                
+                await asyncio.sleep(1) # Небольшая задержка между отправкой фото, чтобы не спамить
+            except FileNotFoundError:
+                logger.error(f"Файл изображения не найден: {path}. Пропускаю его.")
+                print(f"DEBUG: ОШИБКА: Файл изображения не найден: {path}") # <-- Отладочный вывод
+            except Exception as e:
+                logger.error(f"Ошибка при отправке фото {path}: {e}")
+                print(f"DEBUG: ОШИБКА: Произошла ошибка при отправке фото {path}: {e}") # <-- Отладочный вывод
+        
+    else:
+        await bot.send_message(chat_id=target_chat_id, text="Не удалось сгенерировать изображения погоды для отправки.", parse_mode='HTML')
+        print("DEBUG: ОШИБКА: Нет сгенерированных изображений для отправки.") # <-- Отладочный вывод
+
+    print("DEBUG: Начинается очистка временных файлов.") # <-- Отладочный вывод
+    # Очистка всех сгенерированных файлов изображений
+    for path in generated_image_paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                logger.info(f"Удален временный файл: {path}")
+            # Также удаляем оригинальный файл, если был создан watermarked
+            if path.endswith("_watermarked.png"):
+                original_path = path.replace("_watermarked.png", ".png")
+                if os.path.exists(original_path):
+                    os.remove(original_path)
+                    logger.info(f"Удален оригинальный временный файл: {original_path}")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении временного файла {path}: {e}")
+            print(f"DEBUG: ОШИБКА: При удалении временного файла: {e}") # <-- Отладочный вывод
+    print("DEBUG: --- Завершение функции main() ---") # <-- Отладочный вывод
+
+if __name__ == "__main__":
+    asyncio.run(main())
