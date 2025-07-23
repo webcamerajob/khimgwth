@@ -15,6 +15,10 @@ jobs:
     steps:
     - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
       uses: actions/checkout@v4
+      with:
+        # Для коммита изменений необходим токен с правами записи
+        persist-credentials: true
+        fetch-depth: 0 # Получить всю историю для корректного коммита
 
     - name: Set up Python # Шаг 2: Настроить среду Python
       uses: actions/setup-python@v5
@@ -23,7 +27,7 @@ jobs:
 
     - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
       run: |
-        pip install requests python-telegram-bot Pillow httpx
+        pip install requests python-telegram-bot Pillow httpx PyYAML # Добавляем PyYAML для работы с файлом данных
 
     - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
       run: |
@@ -39,5 +43,14 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }}
         TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
-        # TEST_MODE: "True" # Если хотите управлять тестовым режимом из YML, раскомментируйте
+        # GitHub Token для коммита
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Важно: Этот секрет создается автоматически GitHub'ом
       run: python weather_publisher.py
+
+    - name: Commit and Push Changes # Шаг 6: Закоммитить и отправить изменения (сохраненные ID сообщений)
+      run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add message_ids.yml # Добавляем файл, который будет содержать ID сообщений
+        git commit -m "chore: Save sent message IDs for deletion" || echo "No changes to commit"
+        git push || echo "No new commits to push"
