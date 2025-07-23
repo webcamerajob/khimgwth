@@ -263,7 +263,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
 
         # Исправлено: Правильное форматирование f-строк и доступ к данным
         # Каждая строка должна быть корректной f-строкой.
-        weather_text_lines =['Metric']['Value']:.1f}°C",
+        weather_text_lines = f"{data['Metric']['Value']:.2f}°C"
             f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
             f"{weather_data}",
             f"Влажность: {weather_data}%",
