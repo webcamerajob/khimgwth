@@ -1,6 +1,7 @@
 name: Delete Old Telegram Messages
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/15 * * * *' # Запускать каждые 15 минут
 
