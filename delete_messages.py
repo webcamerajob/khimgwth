@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # --- Настройки ---
 MESSAGE_IDS_FILE = "message_ids.yml"  # Файл для хранения ID сообщений
-DELETE_AFTER_MINUTES = 1               # Через сколько часов удалять сообщения
+DELETE_AFTER_MINUTES = 1              # Через сколько минут удалять сообщения
 
 async def main():
     """
@@ -85,12 +85,12 @@ async def main():
                 continue
 
             time_diff = current_time - sent_at
-            hours_diff = time_diff.total_seconds() / 3600
+            minutes_diff = time_diff.total_seconds() / 60
             
-            if hours_diff > DELETE_AFTER_HOURS:
+            if minutes_diff > DELETE_AFTER_MINUTES:
                 try:
                     await bot.delete_message(chat_id=target_chat_id, message_id=message_id)
-                    logger.info(f"Сообщение {message_id} успешно удалено (отправлено в {sent_at_str}, прошло {hours_diff:.1f} часов).")
+                    logger.info(f"Сообщение {message_id} успешно удалено (отправлено в {sent_at_str}, прошло {minutes_diff:.1f} минут).")
                     deleted_count += 1
                 except TelegramError as e:
                     error_count += 1
@@ -105,7 +105,7 @@ async def main():
             else:
                 # Сохраняем сообщение для будущей проверки
                 updated_messages_list.append(msg_info)
-                logger.debug(f"Сообщение {message_id} еще не готово к удалению (прошло {hours_diff:.1f}/{DELETE_AFTER_HOURS} часов)")
+                logger.debug(f"Сообщение {message_id} еще не готово к удалению (прошло {minutes_diff:.1f}/{DELETE_AFTER_MINUTES} минут)")
         except Exception as e:
             error_count += 1
             logger.error(f"Неизвестная ошибка при обработке сообщения {msg_info}: {e}")
