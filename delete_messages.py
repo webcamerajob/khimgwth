@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 # --- Настройки ---
 MESSAGE_IDS_FILE = "message_ids.yml"  # Файл для хранения ID сообщений
-DELETE_AFTER_MINUTES = 60              # Через сколько минут удалять сообщения
+DELETE_AFTER_MINUTES = 1              # Через сколько минут удалять сообщения
+MAX_HISTORY_LINES = 300               # Максимальное количество хранимых записей
 
 async def main():
     """
@@ -62,6 +63,34 @@ async def main():
     deleted_count = 0
     error_count = 0
 
+    # Очистка старых записей по достижению лимита (FIFO)
+    if len(messages_to_delete) > MAX_HISTORY_LINES:
+        # Удаляем самые старые записи (первые в списке)
+        num_to_remove = len(messages_to_delete) - MAX_HISTORY_LINES
+        removed_count = 0
+        
+        # Пытаемся удалить самые старые сообщения из Telegram
+        for i in range(num_to_remove):
+            msg_info = messages_to_delete[i]
+            try:
+                message_id = msg_info.get('message_id')
+                if message_id:
+                    try:
+                        await bot.delete_message(chat_id=target_chat_id, message_id=message_id)
+                        logger.info(f"Удалено старое сообщение {message_id} (очистка истории)")
+                        removed_count += 1
+                    except TelegramError as e:
+                        # Если сообщение уже удалено или недоступно, просто пропускаем
+                        if "message to delete not found" not in str(e).lower() and "message can't be deleted" not in str(e).lower():
+                            logger.warning(f"Не удалось удалить старое сообщение {message_id}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка при удалении старого сообщения: {e}")
+        
+        # Оставляем только последние MAX_HISTORY_LINES записей
+        messages_to_delete = messages_to_delete[num_to_remove:]
+        logger.info(f"Очистка истории: удалено {removed_count} старых записей, осталось {len(messages_to_delete)}")
+
+    # Обработка сообщений для удаления по времени
     for msg_info in messages_to_delete:
         try:
             message_id = msg_info.get('message_id')
