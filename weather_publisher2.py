@@ -98,8 +98,8 @@ async def get_location_key(city_name: str) -> str | None:
         response.raise_for_status()
         data = response.json()
         if data:
-            logger.info(f"Найден Location Key для {city_name}: {data[0]['Key']} (TEST_MODE OFF)")
-            return data[0]["Key"]
+            logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
+            return data["Key"]
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -133,7 +133,7 @@ async def get_current_weather(location_key: str) -> Dict | None:
         data = response.json()
         if data:
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data[0]
+            return data
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -251,17 +251,14 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         
         draw = ImageDraw.Draw(img) 
 
-        wind_direction_text = weather_data['Wind']['Direction']['Localized']
+        wind_direction_text = weather_data['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
-        weather_text_lines = [
-            f"Погода в {city_name.capitalize()}:",
-            "", # Добавлена пустая строка для отступа
-            f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
-            f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
-            f"{weather_data['WeatherText']}",
-            f"Влажность: {weather_data['RelativeHumidity']}%",
-            f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
+        weather_text_lines =['Metric']['Value']:.1f}°C",
+            f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
+            f"{weather_data}",
+            f"Влажность: {weather_data}%",
+            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч",
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -284,7 +281,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             max_line_width = 0
             for line in weather_text_lines:
                 line_bbox = draw.textbbox((0,0), line, font=test_font)
-                max_line_width = max(max_line_width, line_bbox[2] - line_bbox[0])
+                max_line_width = max(max_line_width, line_bbox - line_bbox)
 
             if max_line_width <= max_text_width_for_font_sizing:
                 best_font = test_font
@@ -296,7 +293,7 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         
         # Пересчитываем размер текста с финальным шрифтом
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
-        text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        text_width, text_height = bbox - bbox, bbox - bbox[1]
 
         # Высота плашки подстраивается под текст с отступами
         padding = int(width * 0.03) # Отступы от текста до краев плашки
@@ -345,7 +342,7 @@ def save_message_id(message_id: int):
     """
     try:
         # Загружаем существующие ID сообщений
-        messages = []
+        messages =
         if os.path.exists(MESSAGE_IDS_FILE):
             with open(MESSAGE_IDS_FILE, 'r') as f:
                 try:
@@ -377,7 +374,7 @@ async def main():
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
     
     # Список для хранения путей к сгенерированным изображениям
-    generated_image_paths: List[str] = []
+    generated_image_paths: List[str] =
 
     # Проверка наличия всех необходимых переменных окружения
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -441,4 +438,10 @@ async def main():
                 weather_data = await get_current_weather(location_key)
             else:
                 logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
-                continue # Пропускаем город, если не удалось 
+                continue # Пропускаем город, если не удалось получить ключ
+
+        if weather_data:
+            print(f"DEBUG: Данные о погоде получены для {city}. Создаю изображение.") # <-- Отладочный вывод
+            image_path = create_weather_image(city, weather_data)
+            if image_path:
+                generated_image_paths.append(im
