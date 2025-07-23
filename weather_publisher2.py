@@ -97,11 +97,9 @@ async def get_location_key(city_name: str) -> str | None:
         response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
-        if data:
-            # Исправлено: AccuWeather API для поиска городов возвращает список,
-            # и ключ находится в первом элементе списка.
+        if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
             logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
-            return data["Key"]
+            return data["Key"] # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -133,11 +131,9 @@ async def get_current_weather(location_key: str) -> Dict | None:
         response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
-        if data:
-            # Исправлено: AccuWeather API для текущих условий возвращает список,
-            # и данные находятся в первом элементе списка.
+        if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data
+            return data # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -256,15 +252,15 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         draw = ImageDraw.Draw(img) 
 
         # Исправлено: Правильный доступ к данным о ветре
-        wind_direction_text = weather_data['Localized'] # Доступ к вложенному словарю
+        wind_direction_text = weather_data['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
         # Исправлено: Правильное форматирование f-строк и доступ к данным
         weather_text_lines =['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
-            f"{weather_data}", # Доступ к WeatherText
-            f"Влажность: {weather_data}%", # Доступ к RelativeHumidity
-            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч", # Доступ к вложенному словарю
+            f"{weather_data}",
+            f"Влажность: {weather_data}%",
+            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч",
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -438,4 +434,7 @@ async def main():
         weather_data = None
         if TEST_MODE:
             weather_data = PRESET_WEATHER_DATA.get(city)
-            if not weather_data
+            if not weather_data:
+                logger.error(f"Предустановленные данные для города {city} не найдены.")
+        else:
+            location_key = await get_locat
