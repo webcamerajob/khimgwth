@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-import yaml # Импортируем PyYAML
+import yaml  # Импортируем PyYAML
 
 # Настройка логирования
 logging.basicConfig(
@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 ACCUWEATHER_BASE_URL = "http://dataservice.accuweather.com/"
 
 # Переключатель тестового режима (можно управлять из YML через env var TEST_MODE)
-TEST_MODE = os.getenv("TEST_MODE", "False").lower() == "true" # Читаем из переменной окружения, по умолчанию False
+TEST_MODE = os.getenv("TEST_MODE", "False").lower() == "true"  # Читаем из переменной окружения, по умолчанию False
 
 # Настройки вотермарки
-WATERMARK_FILE = "watermark.png" # Имя файла вашей вотермарки, расположенного в корневой папке
-WATERMARK_SCALE_FACTOR = 0.25 # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
+WATERMARK_FILE = "watermark.png"  # Имя файла вашей вотермарки, расположенного в корневой папке
+WATERMARK_SCALE_FACTOR = 0.25  # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
 
 # Настройки кнопок
 AD_BUTTON_TEXT = "Новости"
@@ -72,6 +72,10 @@ WIND_DIRECTION_ABBR = {
     "ССВ": "ССВ", "ВНВ": "ВНВ", "ВЮВ": "ВЮВ", "ЮЮВ": "ЮЮВ",
     "ЮЮЗ": "ЮЮЗ", "ЗЮЗ": "ЗЮЗ", "ЗСЗ": "ЗСЗ", "ССЗ": "ССЗ",
     "переменный": "переменный",
+    "Юго-восток": "ЮВ",  # Добавлено
+    "Северо-запад": "СЗ",  # Добавлено
+    "Северо-восток": "СВ",  # Добавлено
+    "Юго-запад": "ЮЗ",  # Добавлено
 }
 
 def get_wind_direction_abbr(direction_text: str) -> str:
@@ -86,7 +90,7 @@ async def get_location_key(city_name: str) -> str | None:
     Получает Location Key AccuWeather для заданного города.
     """
     if TEST_MODE:
-        return "TEST_KEY" # Заглушка для тестового режима
+        return "TEST_KEY"  # Заглушка для тестового режима
     url = f"{ACCUWEATHER_BASE_URL}locations/v1/cities/search"
     params = {
         "apikey": os.getenv("ACCUWEATHER_API_KEY"),
@@ -97,11 +101,11 @@ async def get_location_key(city_name: str) -> str | None:
         response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
-        if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
+        if data and isinstance(data, list) and len(data) > 0:  # Убеждаемся, что это список и не пустой
             # Исправлено: AccuWeather API для поиска городов возвращает список,
             # и ключ находится в первом элементе списка.
-            logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
-            return data["Key"] # Доступ к первому элементу списка
+            logger.info(f"Найден Location Key для {city_name}: {data[0]['Key']} (TEST_MODE OFF)")
+            return data[0]["Key"]  # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -133,11 +137,11 @@ async def get_current_weather(location_key: str) -> Dict | None:
         response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
-        if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
+        if data and isinstance(data, list) and len(data) > 0:  # Убеждаемся, что это список и не пустой
             # Исправлено: AccuWeather API для текущих условий возвращает список,
             # и данные находятся в первом элементе списка.
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data # Доступ к первому элементу списка
+            return data[0]  # Доступ к первому элементу списка
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -151,7 +155,7 @@ def get_random_background_image(city_name: str) -> str | None:
     """
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
     if os.path.isdir(city_folder):
-        import random # Импортируем random локально для этой функции, если не импортирован в начале
+        import random  # Импортируем random локально для этой функции, если не импортирован в начале
         image_files = [f for f in os.listdir(city_folder) if os.path.isfile(os.path.join(city_folder, f)) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
         if image_files:
             return os.path.join(city_folder, random.choice(image_files))
@@ -202,7 +206,7 @@ def add_watermark(base_image_path: str) -> str | None:
     watermarked_image_path = base_image_path.replace(".png", "_watermarked.png")
     
     try:
-        base_img = Image.open(base_image_path).convert("RGBA") # Открываем как RGBA для прозрачности
+        base_img = Image.open(base_image_path).convert("RGBA")  # Открываем как RGBA для прозрачности
         base_width, base_height = base_img.size
 
         watermark_path = WATERMARK_FILE
@@ -218,7 +222,7 @@ def add_watermark(base_image_path: str) -> str | None:
         watermark_img = watermark_img.resize((target_watermark_width, watermark_height), Image.Resampling.LANCZOS)
 
         # Позиционируем вотермарку в правом верхнем углу с отступами
-        padding = int(base_width * 0.02) # Отступ 2% от края
+        padding = int(base_width * 0.02)  # Отступ 2% от края
         position_x = base_width - watermark_img.width - padding
         position_y = padding
 
@@ -256,18 +260,16 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         draw = ImageDraw.Draw(img) 
 
         # Исправлено: Правильный доступ к данным о ветре
-        # weather_data - это словарь, содержащий данные о погоде.
-        # Доступ к вложенным словарям должен быть через их ключи.
-        wind_direction_text = weather_data['Localized']
+        wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
         # Исправлено: Правильное форматирование f-строк и доступ к данным
-        # Каждая строка должна быть корректной f-строкой.
-        weather_text_lines = f"{data['Metric']['Value']:.2f}°C"
-            f"Ощущается как: {weather_data['Metric']['Value']:.1f}°C",
-            f"{weather_data}",
-            f"Влажность: {weather_data}%",
-            f"Ветер: {wind_direction_abbr}, {weather_data['Metric']['Value']:.1f} км/ч",
+        weather_text_lines = [
+            f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
+            f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
+            f"{weather_data['WeatherText']}",
+            f"Влажность: {weather_data['RelativeHumidity']}%",
+            f"Ветер: {wind_direction_abbr}, {weather_data['Wind']['Speed']['Metric']['Value']:.1f} км/ч",
         ]
         weather_text = "\n".join(weather_text_lines)
 
@@ -278,20 +280,21 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         target_text_width_ratio = 0.75
         max_text_width_for_font_sizing = int(plaque_width * target_text_width_ratio)
         
-        current_font_size = 15 # Начинаем с разумного размера
-        best_font = get_font(current_font_size) # Инициализируем с начальным шрифтом
+        current_font_size = 15  # Начинаем с разумного размера
+        best_font = get_font(current_font_size)  # Инициализируем с начальным шрифтом
         
         # Итеративно увеличиваем размер шрифта, пока текст не достигнет 75% ширины плашки
         while True:
             test_font = get_font(current_font_size + 1)
-            if test_font is None: # Если шрифт не загрузился или не увеличивается
+            if test_font is None:  # Если шрифт не загрузился или не увеличивается
                 break
             
             max_line_width = 0
             for line in weather_text_lines:
-                line_bbox = draw.textbbox((0,0), line, font=test_font)
                 # Исправлено: Правильный расчет ширины линии
-                max_line_width = max(max_line_width, line_bbox - line_bbox) # bbox возвращает (x1, y1, x2, y2)
+                left, top, right, bottom = draw.textbbox((0,0), line, font=test_font)
+                line_width = right - left
+                max_line_width = max(max_line_width, line_width)
 
             if max_line_width <= max_text_width_for_font_sizing:
                 best_font = test_font
@@ -299,39 +302,39 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             else:
                 break
 
-        font = best_font # Используем найденный оптимальный шрифт
+        font = best_font  # Используем найденный оптимальный шрифт
         
         # Пересчитываем размер текста с финальным шрифтом
-        bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         # Исправлено: Правильный расчет ширины и высоты текста из bbox
-        text_width = bbox - bbox # Ширина = x2 - x1
-        text_height = bbox - bbox[1] # Высота = y2 - y1
+        left, top, right, bottom = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
+        text_width = right - left
+        text_height = bottom - top
 
         # Высота плашки подстраивается под текст с отступами
-        padding = int(width * 0.03) # Отступы от текста до краев плашки
-        border_radius = int(width * 0.02) # Радиус скругления углов
+        padding = int(width * 0.03)  # Отступы от текста до краев плашки
+        border_radius = int(width * 0.02)  # Радиус скругления углов
         
         plaque_height = text_height + 2 * padding
 
         # Позиционирование плашки (по центру по горизонтали и вертикали)
         plaque_x1 = (width - plaque_width) // 2
-        plaque_y1 = (height - plaque_height) // 2 # Вертикальное центрирование
+        plaque_y1 = (height - plaque_height) // 2  # Вертикальное центрирование
         plaque_x2 = plaque_x1 + plaque_width
         plaque_y2 = plaque_y1 + plaque_height
 
         # Создаем прозрачное изображение для плашки
-        plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0)) # Полностью прозрачная основа
+        plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0))  # Полностью прозрачная основа
         plaque_draw = ImageDraw.Draw(plaque_img)
 
         # Рисуем скругленный прямоугольник на плашке
-        round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150)) # Черный, полупрозрачный
+        round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150))  # Черный, полупрозрачный
 
         # Накладываем плашку на основное изображение
         img.paste(plaque_img, (0, 0), plaque_img)
 
         # Рисуем текст по центру плашки
         text_x = plaque_x1 + (plaque_width - text_width) // 2
-        text_y = plaque_y1 + (plaque_height - text_height) // 2 # Вертикальное центрирование текста
+        text_y = plaque_y1 + (plaque_height - text_height) // 2  # Вертикальное центрирование текста
         
         draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
 
@@ -354,7 +357,7 @@ def save_message_id(message_id: int):
     """
     try:
         # Загружаем существующие ID сообщений
-        messages = # Исправлено: Инициализация пустого списка
+        messages = []  # Исправлено: Инициализация пустого списка
         if os.path.exists(MESSAGE_IDS_FILE):
             with open(MESSAGE_IDS_FILE, 'r') as f:
                 try:
@@ -370,7 +373,7 @@ def save_message_id(message_id: int):
         current_time_utc = datetime.datetime.now(datetime.timezone.utc)
         messages.append({
             'message_id': message_id,
-            'sent_at': current_time_utc.isoformat() # Сохраняем время в ISO формате (UTC)
+            'sent_at': current_time_utc.isoformat()  # Сохраняем время в ISO формате (UTC)
         })
 
         # Сохраняем обновленный список
@@ -381,19 +384,19 @@ def save_message_id(message_id: int):
         logger.error(f"Ошибка при сохранении ID сообщения {message_id} в файл: {e}")
 
 async def main():
-    print("DEBUG: --- Запуск функции main() ---") # <-- Отладочный вывод
-    global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
+    print("DEBUG: --- Запуск функции main() ---")  # <-- Отладочный вывод
+    global city_to_process  # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
     
     # Список для хранения путей к сгенерированным изображениям
-    generated_image_paths: List[str] = # Исправлено: Инициализация пустого списка
+    generated_image_paths = []  # Исправлено: Инициализация пустого списка
 
     # Проверка наличия всех необходимых переменных окружения
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     accuweather_api_key = os.getenv("ACCUWEATHER_API_KEY")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
     
-    print(f"DEBUG: TEST_MODE установлен в: {TEST_MODE}") # <-- Отладочный вывод
+    print(f"DEBUG: TEST_MODE установлен в: {TEST_MODE}")  # <-- Отладочный вывод
     print(f"DEBUG: TELEGRAM_BOT_TOKEN есть: {bool(telegram_bot_token)}")
     print(f"DEBUG: TARGET_CHAT_ID есть: {bool(target_chat_id)}")
     if not TEST_MODE:
@@ -417,7 +420,7 @@ async def main():
         return
 
     bot = Bot(token=telegram_bot_token)
-    print("DEBUG: Бот Telegram инициализирован.") # <-- Отладочный вывод
+    print("DEBUG: Бот Telegram инициализирован.")  # <-- Отладочный вывод
 
     # Создаем папку backgrounds и подпапки для городов, если их нет
     if not os.path.exists(BACKGROUNDS_FOLDER):
@@ -431,13 +434,13 @@ async def main():
     
     logger.warning(f"Убедитесь, что файлы изображений присутствуют в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' для использования в качестве фонов.")
     logger.warning(f"Убедитесь, что '{WATERMARK_FILE}' присутствует в корневой директории для вотермарки.")
-    print("DEBUG: Проверки папок и файлов фонов/вотермарки завершены.") # <-- Отладочный вывод
+    print("DEBUG: Проверки папок и файлов фонов/вотермарки завершены.")  # <-- Отладочный вывод
 
     # Собираем данные и генерируем изображения для каждого города
     for city in cities_to_publish:
         city_to_process = city
         logger.info(f"Получаю данные для {city}...")
-        print(f"DEBUG: Начало обработки города: {city}") # <-- Отладочный вывод
+        print(f"DEBUG: Начало обработки города: {city}")  # <-- Отладочный вывод
         
         weather_data = None
         if TEST_MODE:
@@ -450,34 +453,37 @@ async def main():
                 weather_data = await get_current_weather(location_key)
             else:
                 logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
-                continue # Пропускаем город, если не удалось получить ключ
+                continue  # Пропускаем город, если не удалось получить ключ
 
         if weather_data:
-            print(f"DEBUG: Данные о погоде получены для {city}. Создаю изображение.") # <-- Отладочный вывод
+            print(f"DEBUG: Данные о погоде получены для {city}. Создаю изображение.")  # <-- Отладочный вывод
             image_path = create_weather_image(city, weather_data)
             if image_path:
                 generated_image_paths.append(image_path)
-                print(f"DEBUG: Изображение создано для {city}: {image_path}") # <-- Отладочный вывод
+                print(f"DEBUG: Изображение создано для {city}: {image_path}")  # <-- Отладочный вывод
             else:
                 logger.error(f"Не удалось создать изображение погоды для {city}. Пропускаю этот город.")
-                print(f"DEBUG: ОШИБКА: Не удалось создать изображение для {city}.") # <-- Отладочный вывод
+                print(f"DEBUG: ОШИБКА: Не удалось создать изображение для {city}.")  # <-- Отладочный вывод
         else:
             logger.warning(f"Не удалось получить данные о погоде для {city}. Пропускаю этот город.")
-            print(f"DEBUG: ОШИБКА: Нет данных о погоде для {city}.") # <-- Отладочный вывод
+            print(f"DEBUG: ОШИБКА: Нет данных о погоде для {city}.")  # <-- Отладочный вывод
         
-        await asyncio.sleep(0.5) # Небольшая задержка между обработкой городов
+        await asyncio.sleep(0.5)  # Небольшая задержка между обработкой городов
     
-    print(f"DEBUG: Всего сгенерировано изображений: {len(generated_image_paths)}") # <-- Отладочный вывод
+    print(f"DEBUG: Всего сгенерировано изображений: {len(generated_image_paths)}")  # <-- Отладочный вывод
 
     # Если есть сгенерированные изображения, отправляем их по одному
     if generated_image_paths:
-        print("DEBUG: Начинаю отправку изображений в Telegram.") # <-- Отладочный вывод
+        print("DEBUG: Начинаю отправку изображений в Telegram.")  # <-- Отладочный вывод
         # Создаем кнопки один раз
         # Исправлено: Правильная инициализация InlineKeyboardMarkup с кнопками
-        keyboard = InlineKeyboardMarkup()
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL)],
+            [InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]
+        ])
 
         for i, path in enumerate(generated_image_paths):
-            print(f"DEBUG: Отправка фото {i+1}/{len(generated_image_paths)}: {path}") # <-- Отладочный вывод
+            print(f"DEBUG: Отправка фото {i+1}/{len(generated_image_paths)}: {path}")  # <-- Отладочный вывод
             try:
                 # Используем 'with open' для корректного закрытия файла
                 with open(path, 'rb') as f:
@@ -488,29 +494,29 @@ async def main():
                     if i == len(generated_image_paths) - 1:
                         reply_markup = keyboard
 
-                    message = await bot.send_photo( # Сохраняем объект сообщения
+                    message = await bot.send_photo(  # Сохраняем объект сообщения
                         chat_id=target_chat_id, 
                         photo=f, 
                         caption=caption, 
                         reply_markup=reply_markup
                     )
-                    save_message_id(message.message_id) # Сохраняем ID отправленного сообщения
+                    save_message_id(message.message_id)  # Сохраняем ID отправленного сообщения
                     logger.info(f"Фото {path} успешно отправлено. Message ID: {message.message_id}")
-                    print(f"DEBUG: Сообщение успешно отправлено и ID сохранено: {message.message_id}") # <-- Отладочный вывод
+                    print(f"DEBUG: Сообщение успешно отправлено и ID сохранено: {message.message_id}")  # <-- Отладочный вывод
                 
-                await asyncio.sleep(1) # Небольшая задержка между отправкой фото, чтобы не спамить
+                await asyncio.sleep(1)  # Небольшая задержка между отправкой фото, чтобы не спамить
             except FileNotFoundError:
                 logger.error(f"Файл изображения не найден: {path}. Пропускаю его.")
-                print(f"DEBUG: ОШИБКА: Файл изображения не найден: {path}") # <-- Отладочный вывод
+                print(f"DEBUG: ОШИБКА: Файл изображения не найден: {path}")  # <-- Отладочный вывод
             except Exception as e:
                 logger.error(f"Ошибка при отправке фото {path}: {e}")
-                print(f"DEBUG: ОШИБКА: Произошла ошибка при отправке фото {path}: {e}") # <-- Отладочный вывод
+                print(f"DEBUG: ОШИБКА: Произошла ошибка при отправке фото {path}: {e}")  # <-- Отладочный вывод
         
     else:
         await bot.send_message(chat_id=target_chat_id, text="Не удалось сгенерировать изображения погоды для отправки.", parse_mode='HTML')
-        print("DEBUG: ОШИБКА: Нет сгенерированных изображений для отправки.") # <-- Отладочный вывод
+        print("DEBUG: ОШИБКА: Нет сгенерированных изображений для отправки.")  # <-- Отладочный вывод
 
-    print("DEBUG: Начинается очистка временных файлов.") # <-- Отладочный вывод
+    print("DEBUG: Начинается очистка временных файлов.")  # <-- Отладочный вывод
     # Очистка всех сгенерированных файлов изображений
     for path in generated_image_paths:
         try:
@@ -525,8 +531,8 @@ async def main():
                     logger.info(f"Удален оригинальный временный файл: {original_path}")
         except Exception as e:
             logger.error(f"Ошибка при удалении временного файла {path}: {e}")
-            print(f"DEBUG: ОШИБКА: При удалении временного файла: {e}") # <-- Отладочный вывод
-    print("DEBUG: --- Завершение функции main() ---") # <-- Отладочный вывод
+            print(f"DEBUG: ОШИБКА: При удалении временного файла: {e}")  # <-- Отладочный вывод
+    print("DEBUG: --- Завершение функции main() ---")  # <-- Отладочный вывод
 
 if __name__ == "__main__":
     asyncio.run(main())
