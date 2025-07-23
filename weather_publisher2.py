@@ -98,8 +98,9 @@ async def get_location_key(city_name: str) -> str | None:
         response.raise_for_status()
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
+            # Исправлено: Доступ к первому элементу списка
             logger.info(f"Найден Location Key для {city_name}: {data['Key']} (TEST_MODE OFF)")
-            return data["Key"] # Доступ к первому элементу списка
+            return data["Key"]
         else:
             logger.warning(f"Не удалось найти Location Key для города: {city_name} (TEST_MODE OFF)")
             return None
@@ -132,8 +133,9 @@ async def get_current_weather(location_key: str) -> Dict | None:
         response.raise_for_status()
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0: # Убеждаемся, что это список и не пустой
+            # Исправлено: Доступ к первому элементу списка
             logger.info(f"Получены данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
-            return data # Доступ к первому элементу списка
+            return data
         else:
             logger.warning(f"Не удалось получить данные о погоде для Location Key: {location_key} (TEST_MODE OFF)")
             return None
@@ -436,5 +438,4 @@ async def main():
             weather_data = PRESET_WEATHER_DATA.get(city)
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
-        else:
-            location_key = await get_locat
+        
