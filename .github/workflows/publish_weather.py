@@ -38,7 +38,7 @@ jobs:
         ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }}
         TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: python weather_publisher.py
+      run: python weather_publisher2.py
 
     - name: Commit and Push Changes
       run: |
