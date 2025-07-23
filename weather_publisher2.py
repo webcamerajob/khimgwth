@@ -2,7 +2,7 @@ import logging
 import requests
 import asyncio
 import os
-import datetime # Импортируем datetime
+import datetime
 from typing import Dict, Any, List
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot
@@ -281,17 +281,6 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
             if test_font is None: # Если шрифт не загрузился или не увеличивается
                 break
             
-            # Проверяем, как текст будет выглядеть с новым размером шрифта
-            # Используем get_multiline_textsize для корректного расчета размеров многострочного текста
-            # bbox = draw.textbbox((0, 0), weather_text, font=test_font, spacing=10)
-            # text_width_current = bbox[2] - bbox[0]
-            
-            # Вместо textbbox для многострочного текста лучше использовать textlength
-            # или рисовать в временном изображении и измерять, но для оценки достаточно
-            # пройтись по каждой строке. Для простоты, пока используем textbbox,
-            # предполагая, что он корректно работает для многострочного текста в последних версиях Pillow
-            
-            # Лучше оценить ширину самой широкой строки, а не всего блока текста
             max_line_width = 0
             for line in weather_text_lines:
                 line_bbox = draw.textbbox((0,0), line, font=test_font)
@@ -383,11 +372,7 @@ def save_message_id(message_id: int):
         logger.error(f"Ошибка при сохранении ID сообщения {message_id} в файл: {e}")
 
 async def main():
-    """
-    Основная функция, которая запускает скрипт.
-    Собирает данные для каждого города, генерирует изображения,
-    а затем отправляет их по одному, прикрепляя кнопки к последнему фото.
-    """
+    print("DEBUG: --- Запуск функции main() ---") # <-- Отладочный вывод
     global city_to_process # Объявляем глобальной для доступа в get_current_weather (тестовый режим)
     cities_to_publish = ["Пномпень", "Сиануквиль", "Сиемреап"]
     
@@ -398,9 +383,13 @@ async def main():
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     accuweather_api_key = os.getenv("ACCUWEATHER_API_KEY")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
-    # GITHUB_TOKEN не нужен здесь, он используется в .yml файле для Git-операций
+    
+    print(f"DEBUG: TEST_MODE установлен в: {TEST_MODE}") # <-- Отладочный вывод
+    print(f"DEBUG: TELEGRAM_BOT_TOKEN есть: {bool(telegram_bot_token)}")
+    print(f"DEBUG: TARGET_CHAT_ID есть: {bool(target_chat_id)}")
+    if not TEST_MODE:
+        print(f"DEBUG: ACCUWEATHER_API_KEY есть: {bool(accuweather_api_key)}")
 
-    # Проверка конфигурации (API ключ нужен только если TEST_MODE=False)
     if not all([telegram_bot_token, target_chat_id]) or (not TEST_MODE and not accuweather_api_key):
         logger.error("ОШИБКА: Отсутствуют необходимые переменные окружения. "
                      "Убедитесь, что TELEGRAM_BOT_TOKEN и TARGET_CHAT_ID установлены.")
@@ -409,13 +398,17 @@ async def main():
         
         # Попытка отправить сообщение об ошибке, если хотя бы бот и чат ID есть
         if telegram_bot_token and target_chat_id:
-            bot_for_error = Bot(token=telegram_bot_token)
-            await bot_for_error.send_message(chat_id=target_chat_id,
-                                   text="❌ <b>Ошибка конфигурации бота!</b> Отсутствуют API-ключи или ID чата.",
-                                   parse_mode='HTML')
+            try:
+                bot_for_error = Bot(token=telegram_bot_token)
+                await bot_for_error.send_message(chat_id=target_chat_id,
+                                       text="❌ <b>Ошибка конфигурации бота!</b> Отсутствуют API-ключи или ID чата.",
+                                       parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Не удалось отправить сообщение об ошибке конфигурации: {e}")
         return
 
     bot = Bot(token=telegram_bot_token)
+    print("DEBUG: Бот Telegram инициализирован.") # <-- Отладочный вывод
 
     # Создаем папку backgrounds и подпапки для городов, если их нет
     if not os.path.exists(BACKGROUNDS_FOLDER):
@@ -429,14 +422,23 @@ async def main():
     
     logger.warning(f"Убедитесь, что файлы изображений присутствуют в папках '{BACKGROUNDS_FOLDER}/<НазваниеГорода>' для использования в качестве фонов.")
     logger.warning(f"Убедитесь, что '{WATERMARK_FILE}' присутствует в корневой директории для вотермарки.")
+    print("DEBUG: Проверки папок и файлов фонов/вотермарки завершены.") # <-- Отладочный вывод
 
     # Собираем данные и генерируем изображения для каждого города
     for city in cities_to_publish:
         city_to_process = city
         logger.info(f"Получаю данные для {city}...")
+        print(f"DEBUG: Начало обработки города: {city}") # <-- Отладочный вывод
         
         weather_data = None
         if TEST_MODE:
             weather_data = PRESET_WEATHER_DATA.get(city)
             if not weather_data:
                 logger.error(f"Предустановленные данные для города {city} не найдены.")
+        else:
+            location_key = await get_location_key(city)
+            if location_key:
+                weather_data = await get_current_weather(location_key)
+            else:
+                logger.warning(f"Не удалось получить Location Key для города {city}. Пропускаю этот город.")
+                continue # Пропускаем город, если не удалось 
