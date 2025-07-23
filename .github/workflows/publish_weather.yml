@@ -11,7 +11,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest # Запускать на чистой виртуальной машине Ubuntu
-
+    permissions:
+      contents: write
     steps:
     - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
       uses: actions/checkout@v4
