@@ -475,14 +475,14 @@ async def main():
     # Если есть сгенерированные изображения, отправляем их по одному
     if generated_image_paths:
         print("DEBUG: Начинаю отправку изображений в Telegram.")  # <-- Отладочный вывод
-        # Создаем кнопки один раз
-        # Исправлено: Правильная инициализация InlineKeyboardMarkup с кнопками
-    keyboard = InlineKeyboardMarkup([
-        [  # Один ряд с двумя кнопками
-            InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
-            InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)
-        ]
-    ])
+        # Создаем кнопки в один ряд
+        keyboard = InlineKeyboardMarkup([
+            [  # Один ряд с двумя кнопками
+                InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL),
+                InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)
+            ]
+        ])
+
         for i, path in enumerate(generated_image_paths):
             print(f"DEBUG: Отправка фото {i+1}/{len(generated_image_paths)}: {path}")  # <-- Отладочный вывод
             try:
