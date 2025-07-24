@@ -3,8 +3,8 @@ name: Delete Old Telegram Messages
 on:
   workflow_dispatch:
   schedule:
-    # Это соответствует 06:00, 12:00 и 18:00 по времени Пномпеня (GMT+7) без учета летнего времени.
-    - cron: '0 8,14,2 * * *'
+    # Это соответствует 11:00, 17:00 и 23:00 по времени Пномпеня (GMT+7) без учета летнего времени.
+    - cron: '0 4,10,16 * * *'
 jobs:
   delete:
     runs-on: ubuntu-latest
