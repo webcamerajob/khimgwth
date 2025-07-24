@@ -171,28 +171,6 @@ def round_rectangle(draw, xy, radius, fill):
     draw.ellipse((x1, y2 - radius * 2, x1 + radius * 2, y2), fill=fill)
     draw.ellipse((x2 - radius * 2, y2 - radius * 2, x2, y2), fill=fill)
 
-def get_font(font_size: int):
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-        logger.info("Шрифт 'arial.ttf' успешно загружен.")
-        return font
-    except IOError:
-        logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-        try:
-            font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
-            logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
-            return font
-        except IOError:
-            logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
-            font = ImageFont.load_default()
-            logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
-            return font
-    except Exception as e:
-        logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
-        font = ImageFont.load_default()
-        logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
-        return font
-
 def add_watermark(base_image_path: str) -> str | None:
     watermarked_image_path = base_image_path.replace(".png", "_watermarked.png")
     
