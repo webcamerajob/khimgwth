@@ -31,11 +31,6 @@ BACKGROUNDS_FOLDER = "backgrounds"
 MESSAGE_IDS_FILE = "message_ids.yml"
 
 # --- Настройки устойчивости ---
-@circuit(
-    failure_threshold=3,
-    recovery_timeout=60,
-    name="AccuWeather API"
-)
 MAX_SEND_RETRIES = 3  # Максимальное количество попыток отправки
 RETRY_DELAY = 2  # Задержка между попытками в секундах
 TELEGRAM_TIMEOUT = 10  # Таймаут для запросов к Telegram API
@@ -108,7 +103,11 @@ async def get_location_key(city_name: str) -> str | None:
 # Глобальная переменная для временного хранения названия города
 city_to_process = ""
 
-# @circuit(WEATHER_CB)
+@circuit(
+    failure_threshold=3,
+    recovery_timeout=60,
+    name="AccuWeather API"
+)
 async def get_current_weather(location_key: str) -> Dict | None:
     if TEST_MODE:
         if city_to_process in PRESET_WEATHER_DATA:
