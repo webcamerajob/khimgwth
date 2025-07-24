@@ -30,15 +30,26 @@ NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 BACKGROUNDS_FOLDER = "backgrounds"
 MESSAGE_IDS_FILE = "message_ids.yml"
 
-# Добавьте в начало файла
+# Глобальный кэш шрифтов
 _FONT_CACHE = {}
 
 def get_font(font_size: int):
     if font_size not in _FONT_CACHE:
         try:
             _FONT_CACHE[font_size] = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+            logger.info(f"Шрифт 'arial.ttf' размера {font_size} успешно загружен.")
         except IOError:
-            # ... остальная логика fallback
+            logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
+            try:
+                _FONT_CACHE[font_size] = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
+                logger.info(f"Шрифт 'DejaVuSans.ttf' размера {font_size} успешно загружен.")
+            except IOError:
+                logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
+                _FONT_CACHE[font_size] = ImageFont.load_default()
+        except Exception as e:
+            logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}")
+            _FONT_CACHE[font_size] = ImageFont.load_default()
+    
     return _FONT_CACHE[font_size]
     
 # --- Настройки устойчивости ---
