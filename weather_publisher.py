@@ -528,13 +528,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    else:
-        await bot.send_message(chat_id=target_chat_id, text="Не удалось сгенерировать изображения погоды для отправки.", parse_mode='HTML')
-        print("DEBUG: ОШИБКА: Нет сгенерированных изображений для отправки.")  # <-- Отладочный вывод
-
-    print("DEBUG: Начинается очистка временных файлов.")  # <-- Отладочный вывод
-    # Очистка всех сгенерированных файлов изображений
-    for path in generated_image_paths:
-        try:
-            if os.path.exists(path):
-                os.remove(path)
