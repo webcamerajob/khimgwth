@@ -30,9 +30,9 @@ NEWS_BUTTON_TEXT = "Реклама"
 NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 BACKGROUNDS_FOLDER = "backgrounds"
 MESSAGE_IDS_FILE = "message_ids.yml"
-API_RETRIES = 3  # Количество попыток запроса к API
-API_RETRY_DELAY = 2  # Задержка между попытками в секундах
-API_TIMEOUT = 10  # Таймаут для запросов к API
+API_RETRIES = 3
+API_RETRY_DELAY = 2
+API_TIMEOUT = 10
 
 # Глобальный кэш шрифтов
 _FONT_CACHE = {}
@@ -469,7 +469,7 @@ async def main():
             
             if message_id:
                 save_message_id(message_id)
-                logger.info(f"Сообщение отправлено и проверено: {message_id}")
+                logger.info(f"Сообщение отправлено: {message_id}")
             else:
                 logger.error(f"Не удалось отправить фото: {path}")
             
