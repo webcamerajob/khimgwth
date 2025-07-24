@@ -30,27 +30,28 @@ NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 BACKGROUNDS_FOLDER = "backgrounds"
 MESSAGE_IDS_FILE = "message_ids.yml"
 
-# Глобальный кэш шрифтов
+# Глобальный кэш шрифтов (должен быть объявлен один раз)
 _FONT_CACHE = {}
 
 def get_font(font_size: int):
-    if font_size not in _FONT_CACHE:
-        try:
-            _FONT_CACHE[font_size] = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-            logger.info(f"Шрифт 'arial.ttf' размера {font_size} успешно загружен.")
-        except IOError:
-            logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
-            try:
-                _FONT_CACHE[font_size] = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
-                logger.info(f"Шрифт 'DejaVuSans.ttf' размера {font_size} успешно загружен.")
-            except IOError:
-                logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
-                _FONT_CACHE[font_size] = ImageFont.load_default()
-        except Exception as e:
-            logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}")
-            _FONT_CACHE[font_size] = ImageFont.load_default()
+    global _FONT_CACHE  # Явное указание на использование глобальной переменной
     
-    return _FONT_CACHE[font_size]
+    if font_size in _FONT_CACHE:
+        return _FONT_CACHE[font_size]
+    
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+        logger.debug(f"Шрифт 'arial.ttf' размера {font_size} загружен в кэш")  # Изменил на debug
+    except IOError:
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
+            logger.debug(f"Шрифт 'DejaVuSans.ttf' размера {font_size} загружен в кэш")
+        except IOError:
+            font = ImageFont.load_default()
+            logger.warning(f"Используется стандартный шрифт для размера {font_size}")
+    
+    _FONT_CACHE[font_size] = font
+    return font
     
 # --- Настройки устойчивости ---
 MAX_SEND_RETRIES = 3  # Максимальное количество попыток отправки
@@ -239,9 +240,9 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
     try:
         img = Image.open(background_path).convert("RGB")
         width, height = img.size
-        draw = ImageDraw.Draw(img) 
+        draw = ImageDraw.Draw(img)
 
-        # Формирование текста погоды
+        # Формирование текста погоды (сохранен оригинальный формат)
         wind_direction_text = weather_data['Wind']['Direction']['Localized']
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
         weather_text_lines = [
@@ -254,37 +255,42 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         ]
         weather_text = "\n".join(weather_text_lines)
 
-        # Рассчет размеров плашки
+        # Рассчет размеров плашки (сохранены оригинальные параметры)
         plaque_width = int(width * 0.85)
         target_text_width_ratio = 0.75
         max_text_width_for_font_sizing = int(plaque_width * target_text_width_ratio)
         current_font_size = 15
-        best_font = get_font(current_font_size)
         
-        # Подбор размера шрифта
+        # Оптимизированный подбор размера шрифта
+        best_font = get_font(current_font_size)
+        if best_font is None:
+            best_font = ImageFont.load_default()
+            logger.warning("Используется стандартный шрифт Pillow")
+
         while True:
-            test_font = get_font(current_font_size + 1)
-            if test_font is None:
+            next_font = get_font(current_font_size + 1)
+            if next_font is None:
                 break
+                
+            # Проверяем ширину текста (сохранен оригинальный метод расчета)
             max_line_width = 0
             for line in weather_text_lines:
-                left, top, right, bottom = draw.textbbox((0,0), line, font=test_font)
+                left, top, right, bottom = draw.textbbox((0,0), line, font=next_font)
                 line_width = right - left
                 max_line_width = max(max_line_width, line_width)
+                
             if max_line_width <= max_text_width_for_font_sizing:
-                best_font = test_font
+                best_font = next_font
                 current_font_size += 1
             else:
                 break
 
-        font = best_font
-        
-        # Рассчет размеров текста
-        left, top, right, bottom = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
+        # Рассчет размеров текста (оригинальный метод)
+        left, top, right, bottom = draw.textbbox((0, 0), weather_text, font=best_font, spacing=10)
         text_width = right - left
         text_height = bottom - top
 
-        # Параметры плашки
+        # Параметры плашки (оригинальные расчеты)
         padding = int(width * 0.03)
         border_radius = int(width * 0.02)
         plaque_height = text_height + 2 * padding
@@ -293,20 +299,29 @@ def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
         plaque_x2 = plaque_x1 + plaque_width
         plaque_y2 = plaque_y1 + plaque_height
 
-        # Создание плашки
+        # Создание плашки (оригинальная реализация)
         plaque_img = Image.new('RGBA', img.size, (0, 0, 0, 0))
         plaque_draw = ImageDraw.Draw(plaque_img)
         round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 150))
         img.paste(plaque_img, (0, 0), plaque_img)
 
-        # Отрисовка текста
+        # Отрисовка текста (оригинальные параметры)
         text_x = plaque_x1 + (plaque_width - text_width) // 2
         text_y = plaque_y1 + (plaque_height - text_height) // 2
-        draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
+        draw.multiline_text(
+            (text_x, text_y), 
+            weather_text, 
+            fill=(255, 255, 255), 
+            font=best_font, 
+            spacing=10, 
+            align="center"
+        )
 
-        # Сохранение и добавление вотермарки
+        # Сохранение и вотермарка (оригинальная логика)
         original_output_path = f"weather_{city_name.lower().replace(' ', '_')}.png"
         img.save(original_output_path)
+        
+        # Добавление вотермарки (сохранена оригинальная функция)
         watermarked_path = add_watermark(original_output_path)
         return watermarked_path if watermarked_path else original_output_path
     
