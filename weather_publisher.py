@@ -330,22 +330,16 @@ def save_message_id(message_id: int):
 
 # --- Новые функции для проверки отправки ---
 async def verify_message_sent(bot: Bot, chat_id: str, message_id: int) -> bool:
-    """Проверяет, было ли сообщение доставлено в чат"""
+    """Проверяет доставку сообщения с учетом новой версии API"""
     try:
-        # Попытка получить информацию о сообщении
         try:
-            message = await bot.get_chat(chat_id=chat_id, message_id=message_id)
-            return True
-        except TelegramError:
-            pass
-        
-        # Альтернативный метод: проверка последних сообщений
-        updates = await bot.get_updates(limit=10, timeout=5)
-        for update in updates:
-            if update.message and update.message.message_id == message_id:
-                return True
-        
-        return False
+            # Новый метод проверки
+            msg = await bot.get_message(chat_id=chat_id, message_id=message_id)
+            return msg is not None
+        except telegram.error.BadRequest as e:
+            if "message not found" in str(e):
+                return False
+            raise
     except Exception as e:
         logger.error(f"Ошибка проверки сообщения {message_id}: {e}")
         return False
@@ -364,21 +358,35 @@ async def send_photo_with_retry_and_verify(
                     chat_id=chat_id,
                     photo=photo_file,
                     reply_markup=reply_markup,
-                    timeout=TELEGRAM_TIMEOUT
+                    read_timeout=TELEGRAM_TIMEOUT,
+                    write_timeout=TELEGRAM_TIMEOUT,
+                    connect_timeout=TELEGRAM_TIMEOUT,
+                    allow_sending_without_reply=True  # Добавлено для совместимости
                 )
                 
-                # Проверка доставки
+                # Сохранена оригинальная проверка доставки
                 if await verify_message_sent(bot, chat_id, message.message_id):
                     return message.message_id
-                else:
-                    logger.warning(f"Не удалось подтвердить доставку сообщения {message.message_id}")
+                
+                logger.warning(f"Не удалось подтвердить доставку сообщения {message.message_id}")
+                await asyncio.sleep(1)  # Добавляем небольшую задержку перед повторной проверкой
                     
-        except TelegramError as e:
-            logger.warning(f"Попытка {attempt}/{MAX_SEND_RETRIES} не удалась: {e}")
+        except telegram.error.TimedOut as e:
+            logger.warning(f"Таймаут при отправке (попытка {attempt}/{MAX_SEND_RETRIES}): {e}")
             if attempt < MAX_SEND_RETRIES:
                 await asyncio.sleep(RETRY_DELAY * attempt)
+                
+        except telegram.error.NetworkError as e:
+            logger.warning(f"Ошибка сети (попытка {attempt}/{MAX_SEND_RETRIES}): {e}")
+            if attempt < MAX_SEND_RETRIES:
+                await asyncio.sleep(RETRY_DELAY * attempt * 2)  # Увеличиваем задержку для NetworkError
+                
+        except telegram.error.TelegramError as e:
+            logger.error(f"Ошибка Telegram API (попытка {attempt}/{MAX_SEND_RETRIES}): {e}")
+            break  # Прерываем попытки для критических ошибок API
+            
         except Exception as e:
-            logger.error(f"Критическая ошибка при отправке: {e}")
+            logger.error(f"Неизвестная ошибка (попытка {attempt}/{MAX_SEND_RETRIES}): {e}")
             break
     
     logger.error(f"Не удалось отправить фото после {MAX_SEND_RETRIES} попыток")
