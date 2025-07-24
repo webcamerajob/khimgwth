@@ -30,6 +30,17 @@ NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 BACKGROUNDS_FOLDER = "backgrounds"
 MESSAGE_IDS_FILE = "message_ids.yml"
 
+# Добавьте в начало файла
+_FONT_CACHE = {}
+
+def get_font(font_size: int):
+    if font_size not in _FONT_CACHE:
+        try:
+            _FONT_CACHE[font_size] = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
+        except IOError:
+            # ... остальная логика fallback
+    return _FONT_CACHE[font_size]
+    
 # --- Настройки устойчивости ---
 MAX_SEND_RETRIES = 3  # Максимальное количество попыток отправки
 RETRY_DELAY = 2  # Задержка между попытками в секундах
