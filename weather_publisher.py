@@ -9,6 +9,8 @@ from telegram import Bot
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import yaml  # Импортируем PyYAML
 
+font_cache: Dict[int, ImageFont.FreeTypeFont] = {}
+
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -171,31 +173,33 @@ def round_rectangle(draw, xy, radius, fill):
     draw.ellipse((x1, y2 - radius * 2, x1 + radius * 2, y2), fill=fill)
     draw.ellipse((x2 - radius * 2, y2 - radius * 2, x2, y2), fill=fill)
 
-def get_font(font_size: int):
+def get_font(font_size: int) -> ImageFont.FreeTypeFont:
     """
-    Пытается загрузить шрифт, подходящий для кириллицы.
-    Возвращает объект шрифта или None, если ни один шрифт не загружен.
+    Возвращает шрифт нужного размера из кэша или загружает его с диска.
     """
+    if font_size in font_cache:
+        return font_cache[font_size]
+
     try:
         font = ImageFont.truetype("arial.ttf", font_size, encoding="UTF-8")
-        logger.info("Шрифт 'arial.ttf' успешно загружен.")
-        return font
+        logger.info(f"Шрифт 'arial.ttf' загружен и закеширован (размер {font_size}).")
     except IOError:
         logger.warning("Шрифт 'arial.ttf' не найден. Попытка загрузить 'DejaVuSans.ttf'.")
         try:
             font = ImageFont.truetype("DejaVuSans.ttf", font_size, encoding="UTF-8")
-            logger.info("Шрифт 'DejaVuSans.ttf' успешно загружен.")
-            return font
+            logger.info(f"Шрифт 'DejaVuSans.ttf' загружен и закеширован (размер {font_size}).")
         except IOError:
-            logger.warning("Шрифт 'DejaVuSans.ttf' не найден. Используется стандартный шрифт Pillow.")
+            logger.warning("Оба шрифта не найдены. Используется стандартный шрифт Pillow.")
             font = ImageFont.load_default()
-            logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
-            return font
+        except Exception as e:
+            logger.error(f"Неизвестная ошибка при загрузке 'DejaVuSans.ttf': {e}")
+            font = ImageFont.load_default()
     except Exception as e:
-        logger.error(f"Неизвестная ошибка при загрузке шрифта: {e}. Используется стандартный шрифт Pillow.")
+        logger.error(f"Неизвестная ошибка при загрузке 'arial.ttf': {e}")
         font = ImageFont.load_default()
-        logger.warning("Используется стандартный шрифт Pillow. Некоторые символы могут отображаться некорректно.")
-        return font
+
+    font_cache[font_size] = font
+    return font
 
 def add_watermark(base_image_path: str) -> str | None:
     """
