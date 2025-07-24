@@ -43,8 +43,8 @@ jobs:
         ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }}
         TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Важно: Этот секрет создается автоматически GitHub'ом
-        TEST_MODE: "False" # Установите "True" для включения тестового режима (использования предустановленных данных)
-      run: python weather_publisher2.py
+        TEST_MODE: "Truee" # Установите "True" для включения тестового режима (использования предустановленных данных)
+      run: python weather_publisher.py
 
     - name: Commit and Push Changes # Шаг 6: Закоммитить и отправить изменения (сохраненные ID сообщений)
       run: |
