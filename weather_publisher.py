@@ -248,12 +248,6 @@ def add_watermark(base_image_path: str) -> str | None:
         logger.error(f"Ошибка при добавлении вотермарки к {base_image_path}: {e}")
         return None
 
-def create_weather_image(city_name: str, weather_data: Dict) -> str | None:
-
-# (весь ваш предыдущий код остаётся БЕЗ изменений ДО create_weather_image включительно)
-
-from PIL import ImageSequence  # Добавлено для работы с GIF
-
 def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | None:
     """
     Создает отдельный кадр изображения с текстом погоды для использования в GIF-анимации.
