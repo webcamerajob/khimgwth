@@ -34,7 +34,7 @@ NEWS_BUTTON_TEXT = "Реклама"
 NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 
 # Путь к папке с фонами
-BACKGROUNDS_FOLDER = "backgrounds"
+BACKGROUNDS_FOLDER = "backgroung2"
 
 # Файл для сохранения ID сообщений
 MESSAGE_IDS_FILE = "message_ids.yml"
