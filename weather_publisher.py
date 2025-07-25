@@ -321,7 +321,7 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
 
     transition_steps = 20       # Количество промежуточных кадров для плавности
     hold_duration = 2400        # Сколько держать каждый основной кадр (мс)
-    blend_duration = 100       # Длительность каждого blended-кадра (мс)
+    blend_duration = 60       # Длительность каждого blended-кадра (мс)
 
     num_frames = len(frames)
 
