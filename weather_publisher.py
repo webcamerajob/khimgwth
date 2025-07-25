@@ -311,30 +311,47 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | No
         logger.error(f"Ошибка при создании кадра для {city_name}: {e}")
         return None
 
-def create_weather_gif(frames: List[Image.Image], output_path: str, duration=1500) -> str | None:
-    try:
-        if not frames:
-            return None
+def create_weather_gif(frames: List[Image.Image], output_path: str = "output/weather.gif") -> str:
+    if not frames:
+        logger.error("Нет кадров для создания GIF.")
+        return ""
 
-        # Убираем альфа-канал
-        frames = [f.convert("RGB") for f in frames]
+    final_frames = []
+    durations = []
 
-        transition_frames = []
-        for i in range(len(frames) - 1):
-            transition_frames.append(frames[i])
-            for alpha in range(0, 256, 32):
-                blended = Image.blend(frames[i], frames[i+1], alpha / 255.0).convert("RGB")
-                transition_frames.append(blended)
+    transition_steps = 8       # Количество промежуточных кадров для плавности
+    hold_duration = 800        # Сколько держать каждый основной кадр (мс)
+    blend_duration = 100       # Длительность каждого blended-кадра (мс)
 
-        transition_frames.append(frames[-1])  # последний кадр
+    num_frames = len(frames)
 
-        transition_frames[0].save(output_path, save_all=True, append_images=transition_frames[1:],
-                                  format='GIF', duration=duration, loop=0)
-        logger.info(f"Анимация сохранена в файл: {output_path}")
-        return output_path
-    except Exception as e:
-        logger.error(f"Ошибка при создании GIF: {e}")
-        return None
+    for i in range(num_frames):
+        current = frames[i]
+        next_frame = frames[(i + 1) % num_frames]  # Переход от последнего к первому
+
+        # Основной кадр с текстом
+        final_frames.append(current.copy())
+        durations.append(hold_duration)
+
+        # Переход между current и next_frame
+        for step in range(1, transition_steps):
+            alpha = step / transition_steps
+            blended = Image.blend(current, next_frame, alpha)
+            final_frames.append(blended)
+            durations.append(blend_duration)
+
+    # Сохраняем как анимированный GIF
+    final_frames[0].save(
+        output_path,
+        save_all=True,
+        append_images=final_frames[1:],
+        duration=durations,
+        loop=0,
+        optimize=False
+    )
+
+    logger.info(f"GIF-анимация успешно создана: {output_path}")
+    return output_path
 
 # --- Модифицированная часть main ---
 async def main():
