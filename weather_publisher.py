@@ -258,7 +258,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | No
         wind_direction_abbr = get_wind_direction_abbr(wind_direction_text)
 
         weather_text_lines = [
-            f"Погода в городе {city_name}:\n",
+            f"Погода в г. {city_name}:\n",
             f"Температура: {weather_data['Temperature']['Metric']['Value']:.1f}°C",
             f"Ощущается как: {weather_data['RealFeelTemperature']['Metric']['Value']:.1f}°C",
             f"{weather_data['WeatherText']}",
