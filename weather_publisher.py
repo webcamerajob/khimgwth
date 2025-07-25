@@ -25,7 +25,7 @@ TEST_MODE = os.getenv("TEST_MODE", "False").lower() == "true"  # Читаем и
 
 # Настройки вотермарки
 WATERMARK_FILE = "watermark.png"  # Имя файла вашей вотермарки, расположенного в корневой папке
-WATERMARK_SCALE_FACTOR = 0.35  # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
+WATERMARK_SCALE_FACTOR = 0.45  # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
 
 # Настройки кнопок
 AD_BUTTON_TEXT = "Новости"
@@ -271,7 +271,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | No
         padding = int(width * 0.03)
         border_radius = int(width * 0.02)
 
-        font = get_font(24)
+        font = get_font(48)
 
         left, top, right, bottom = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_width = right - left
