@@ -319,25 +319,27 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
     final_frames = []
     durations = []
 
-    transition_steps = 20       # Количество промежуточных кадров для плавности
-    hold_duration = 2400        # Сколько держать каждый основной кадр (мс)
-    blend_duration = 60       # Длительность каждого blended-кадра (мс)
+    transition_steps = 12       # Количество кадров между слайдами
+    hold_duration = 2400        # Задержка на основном кадре
+    blend_duration = 100       # Длительность blended-кадров
 
     num_frames = len(frames)
 
     for i in range(num_frames):
-        current = frames[i]
-        next_frame = frames[(i + 1) % num_frames]  # Переход от последнего к первому
+        base = frames[i]
+        next_frame = frames[(i + 1) % num_frames]
 
-        # Основной кадр с текстом
-        final_frames.append(current.copy())
+        # Основной кадр — с вотермарком
+        base_with_watermark = add_watermark(base.copy())  # <- твоя существующая функция
+        final_frames.append(base_with_watermark)
         durations.append(hold_duration)
 
-        # Переход между current и next_frame
+        # Промежуточные blended-кадры без вотермарка, добавим его потом
         for step in range(1, transition_steps):
             alpha = step / transition_steps
-            blended = Image.blend(current, next_frame, alpha)
-            final_frames.append(blended)
+            blended = Image.blend(base, next_frame, alpha)
+            blended_with_watermark = add_watermark(blended)
+            final_frames.append(blended_with_watermark)
             durations.append(blend_duration)
 
     # Сохраняем как анимированный GIF
@@ -347,7 +349,8 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
         append_images=final_frames[1:],
         duration=durations,
         loop=0,
-        optimize=False
+        optimize=False,
+        disposal=2
     )
 
     logger.info(f"GIF-анимация успешно создана: {output_path}")
