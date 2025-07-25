@@ -201,52 +201,44 @@ def get_font(font_size: int) -> ImageFont.FreeTypeFont:
     font_cache[font_size] = font
     return font
 
-def add_watermark(base_image_path: str) -> str | None:
+def add_watermark(base_img: Image.Image) -> Image.Image:
     """
-    Накладывает вотермарку из 'watermark.png' на изображение по заданному пути.
+    Накладывает вотермарку из 'watermark.png' на изображение (объект Image).
     Вотермарка масштабируется и размещается в правом верхнем углу.
-    Возвращает путь к изображению с вотермаркой или None в случае ошибки.
+    Возвращает новый объект Image с наложенной вотермаркой.
     """
-    watermarked_image_path = base_image_path.replace(".png", "_watermarked.png")
-    
     try:
-        base_img = Image.open(base_image_path).convert("RGBA")  # Открываем как RGBA для прозрачности
+        base_img = base_img.convert("RGBA")  # Обеспечиваем прозрачность
         base_width, base_height = base_img.size
 
         watermark_path = WATERMARK_FILE
         if not os.path.exists(watermark_path):
-            logger.warning(f"Файл вотермарки не найден по пути: {watermark_path}. Наложение вотермарки пропущено.")
-            return None
+            logger.warning(f"Файл вотермарки не найден по пути: {watermark_path}. Вотермарка пропущена.")
+            return base_img  # Возвращаем без изменений
 
         watermark_img = Image.open(watermark_path).convert("RGBA")
 
-        # Масштабируем вотермарку на основе ширины основного изображения
-        target_watermark_width = int(base_width * WATERMARK_SCALE_FACTOR)
-        watermark_height = int(watermark_img.height * (target_watermark_width / watermark_img.width))
-        watermark_img = watermark_img.resize((target_watermark_width, watermark_height), Image.Resampling.LANCZOS)
+        # Масштабирование вотермарки
+        target_width = int(base_width * WATERMARK_SCALE_FACTOR)
+        target_height = int(watermark_img.height * (target_width / watermark_img.width))
+        watermark_img = watermark_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
-        # Позиционируем вотермарку в правом верхнем углу с отступами
-        padding = int(base_width * 0.02)  # Отступ 2% от края
-        position_x = base_width - watermark_img.width - padding
-        position_y = padding
+        # Позиционирование: правый верхний угол
+        padding = int(base_width * 0.02)
+        position = (base_width - watermark_img.width - padding, padding)
 
-        # Создаем пустой прозрачный слой для вставки вотермарки
-        transparent_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
-        transparent_layer.paste(watermark_img, (position_x, position_y), watermark_img)
+        # Новый прозрачный слой для наложения
+        overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        overlay.paste(watermark_img, position, mask=watermark_img)
 
-        # Компонуем вотермарку с основным изображением
-        final_img = Image.alpha_composite(base_img, transparent_layer)
-        
-        final_img.save(watermarked_image_path, "PNG")
-        logger.info(f"Вотермарка добавлена к {base_image_path}. Сохранено как {watermarked_image_path}")
-        return watermarked_image_path
+        # Композиция
+        result = Image.alpha_composite(base_img, overlay)
 
-    except FileNotFoundError:
-        logger.error(f"Файл вотермарки '{WATERMARK_FILE}' не найден. Убедитесь, что он находится в корневой директории скрипта.")
-        return None
+        return result
+
     except Exception as e:
-        logger.error(f"Ошибка при добавлении вотермарки к {base_image_path}: {e}")
-        return None
+        logger.error(f"Ошибка при добавлении вотермарки: {e}")
+        return base_img  # Возвращаем оригинал без вотермарки
 
 def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | None:
     """
