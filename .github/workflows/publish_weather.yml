@@ -50,6 +50,11 @@ jobs:
       run: |
         git config user.name "GitHub Actions Bot"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add message_ids.yml # Добавляем файл, который будет содержать ID сообщений
-        git commit -m "chore: Save sent message IDs for deletion" || echo "No changes to commit"
-        git push || echo "No new commits to push"
+        git add message_ids.yml
+        if ! git diff --cached --quiet; then
+          git commit -m "chore: Save sent message IDs for deletion"
+          git pull --rebase origin main
+          git push
+        else
+          echo "✅ message_ids.yml unchanged"
+        fi
