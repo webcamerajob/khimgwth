@@ -348,6 +348,38 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
     logger.info(f"GIF-анимация успешно создана: {output_path}")
     return output_path
 
+def save_message_id(message_id: int):
+    """
+    Сохраняет ID отправленного сообщения и время его отправки в YAML файл.
+    """
+    try:
+        # Загружаем существующие ID сообщений
+        messages = []  # Исправлено: Инициализация пустого списка
+        if os.path.exists(MESSAGE_IDS_FILE):
+            with open(MESSAGE_IDS_FILE, 'r') as f:
+                try:
+                    loaded_data = yaml.safe_load(f)
+                    if isinstance(loaded_data, list):
+                        messages = loaded_data
+                    else:
+                        logger.warning(f"Файл {MESSAGE_IDS_FILE} содержит некорректный формат данных. Будет создан новый список.")
+                except yaml.YAMLError as e:
+                    logger.error(f"Ошибка при парсинге YAML файла {MESSAGE_IDS_FILE}: {e}. Будет создан новый список.")
+        
+        # Добавляем новое сообщение
+        current_time_utc = datetime.datetime.now(datetime.timezone.utc)
+        messages.append({
+            'message_id': message_id,
+            'sent_at': current_time_utc.isoformat()  # Сохраняем время в ISO формате (UTC)
+        })
+
+        # Сохраняем обновленный список
+        with open(MESSAGE_IDS_FILE, 'w') as f:
+            yaml.dump(messages, f, default_flow_style=False)
+        logger.info(f"Сообщение ID {message_id} сохранено в {MESSAGE_IDS_FILE}.")
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении ID сообщения {message_id} в файл: {e}")
+        
 # --- Модифицированная часть main ---
 async def main():
     print("DEBUG: --- Запуск функции main() ---")
