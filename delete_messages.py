@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # --- Настройки ---
 MESSAGE_IDS_FILE = "message_ids.yml"  # Файл для хранения ID сообщений
-DELETE_AFTER_MINUTES = 7              # Через сколько минут удалять сообщения
+DELETE_AFTER_MINUTES = 30              # Через сколько минут удалять сообщения
 MAX_HISTORY_LINES = 300               # Максимальное количество хранимых записей
 
 async def main():
