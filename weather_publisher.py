@@ -433,7 +433,8 @@ async def main():
                     chat_id=target_chat_id,
                     animation=f,
                     caption=None,
-                    reply_markup=keyboard
+                    reply_markup=keyboard,
+                    disable_notification=True
                 )
                 save_message_id(message.message_id)
                 logger.info(f"GIF отправлен: {gif_path}")
