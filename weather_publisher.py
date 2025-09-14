@@ -28,10 +28,10 @@ WATERMARK_FILE = "watermark.png"  # Имя файла вашей вотерма�
 WATERMARK_SCALE_FACTOR = 0.5  # Масштаб вотермарки (например, 0.25 означает 25% от ширины основного изображения)
 
 # Настройки кнопок
-AD_BUTTON_TEXT = "Новости"
+AD_BUTTON_TEXT = "Новости 🇰🇭"
 AD_BUTTON_URL = "https://t.me/cambodiacriminal"
-NEWS_BUTTON_TEXT = "Реклама"
-NEWS_BUTTON_URL = "https://t.me/mister1dollar"
+NEWS_BUTTON_TEXT = "Не нажимать!🆕"
+NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 
 # Путь к папке с фонами
 BACKGROUNDS_FOLDER = "backgrounds2"
