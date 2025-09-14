@@ -30,7 +30,7 @@ WATERMARK_SCALE_FACTOR = 0.5  # Масштаб вотермарки (напри�
 # Настройки кнопок
 AD_BUTTON_TEXT = "Новости 🇰🇭"
 AD_BUTTON_URL = "https://t.me/cambodiacriminal"
-NEWS_BUTTON_TEXT = "Не нажимать!🆕"
+NEWS_BUTTON_TEXT = "Не нажимать! 🆕"
 NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 
 # Путь к папке с фонами
