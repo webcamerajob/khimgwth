@@ -29,16 +29,18 @@ jobs:
 
     - name: Create backgrounds folders
       run: |
+        # Название папки должно соответствовать переменной BACKGROUNDS_FOLDER в скрипте
         mkdir -p backgrounds2/Пномпень
         mkdir -p backgrounds2/Сиануквиль
         mkdir -p backgrounds2/Сиемреап
 
     - name: Run Python script
       env:
+        # Передаем секреты GitHub в переменные окружения для скрипта
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-        VISUALCROSSING_API_KEY: ${{ secrets.VISUALCROSSING_API_KEY }}
+        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }} # <-- ИСПРАВЛЕНО
         TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TEST_MODE: "False"
       run: python weather_publisher.py
 
