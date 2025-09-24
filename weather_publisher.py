@@ -106,17 +106,26 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
         return None
 
 def create_weather_video(frames: List[Image.Image], output_path: str = "weather_report.mp4") -> str:
-    """Создает видео MP4 из списка кадров."""
     if not frames:
         logger.error("Нет кадров для создания видео.")
         return ""
+
     fps = 20
     hold_duration_sec = 3
     transition_steps = 15
     hold_frames_count = fps * hold_duration_sec
 
     try:
-        with imageio.get_writer(output_path, fps=fps, codec='libx264', quality=8, pixelformat='yuv420p') as writer:
+        # Добавляем параметры, чтобы гарантированно убрать звук
+        writer_params = {
+            'fps': fps,
+            'codec': 'libx264',
+            'quality': 8,
+            'pixelformat': 'yuv420p',
+            'output_params': ['-an']  # <-- ВОТ ИЗМЕНЕНИЕ: "-an" означает "no audio"
+        }
+        
+        with imageio.get_writer(output_path, **writer_params) as writer:
             num_cities = len(frames)
             for i in range(num_cities):
                 current_pil_frame = frames[i]
