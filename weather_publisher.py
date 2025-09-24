@@ -59,7 +59,8 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
 
     try:
         img = Image.open(background_path).convert("RGB")
-        target_width = 600
+        
+        target_width = 800
         w_percent = (target_width / float(img.size[0]))
         h_size = int((float(img.size[1]) * float(w_percent)))
         img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
@@ -72,8 +73,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
         feels_like = current_weather['feels_like']
         weather_description = current_weather['weather'][0]['description'].capitalize()
         humidity = current_weather['humidity']
-        wind_speed_ms = current_weather['wind_speed']
-        wind_speed_kmh = wind_speed_ms * 3.6
+        wind_speed_ms = current_weather['wind_speed'] # API уже дает скорость в м/с
         wind_deg = current_weather['wind_deg']
         wind_direction_abbr = get_wind_direction_abbr(wind_deg)
 
@@ -83,7 +83,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
             f"Ощущается как: {feels_like:.1f}°C",
             f"{weather_description}",
             f"Влажность: {humidity}%",
-            f"Ветер: {wind_direction_abbr}, {wind_speed_kmh:.1f} км/ч",
+            f"Ветер: {wind_direction_abbr}, {wind_speed_ms:.1f} м/с", # <-- ИЗМЕНЕНО
         ]
 
         weather_text = "\n".join(weather_text_lines)
@@ -91,7 +91,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
         plaque_width = int(width * 0.9)
         padding = int(width * 0.04)
         border_radius = int(width * 0.03)
-        font_size = int(width / 20) # Вернули шрифт к исходному размеру
+        font_size = int(width / 20)
         font = get_font(font_size)
         text_bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_width = text_bbox[2] - text_bbox[0]
