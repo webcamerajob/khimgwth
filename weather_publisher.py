@@ -7,7 +7,6 @@ from typing import Dict, Any, List, Optional
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 import yaml
-# НОВЫЕ ИМПОРТЫ для создания видео
 import imageio
 import numpy as np
 
@@ -18,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 # --- Константы и конфигурация ---
 OPENWEATHER_API_URL = "https://api.openweathermap.org/data/3.0/onecall"
-VISUALCROSSING_API_URL = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/"
 CITIES = {
     "Пномпень": {"lat": 11.5564, "lon": 104.9282},
     "Сиануквиль": {"lat": 10.6276, "lon": 103.5224},
@@ -33,26 +31,17 @@ NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 BACKGROUNDS_FOLDER = "backgrounds2"
 MESSAGE_IDS_FILE = "message_ids.yml"
 
-# --- Функции получения данных (без изменений) ---
-async def get_historical_records(lat: float, lon: float, api_key: str) -> Optional[Dict[str, float]]:
-    url = f"{VISUALCROSSING_API_URL}{lat},{lon}/today"
-    params = {'unitGroup': 'metric', 'key': api_key, 'include': 'normal,days', 'elements': 'tempmin,tempmax'}
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if 'days' in data and data['days'] and 'normal' in data['days'][0]:
-            normals = data['days'][0]['normal']
-            if 'tempmin' in normals and len(normals['tempmin']) == 3 and 'tempmax' in normals and len(normals['tempmax']) == 3:
-                return {"record_min": normals['tempmin'][0], "record_max": normals['tempmax'][2]}
-        logger.warning(f"Не найдены исторические данные в ответе от Visual Crossing для {lat},{lon}")
-        return None
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Ошибка при запросе исторических данных от Visual Crossing: {e}")
-        return None
+# --- Функции ---
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
-    params = {"lat": coords["lat"], "lon": coords["lon"], "appid": api_key, "units": "metric", "lang": "ru", "exclude": "minutely,hourly,daily,alerts"}
+    params = {
+        "lat": coords["lat"],
+        "lon": coords["lon"],
+        "appid": api_key,
+        "units": "metric",
+        "lang": "ru",
+        "exclude": "minutely,hourly,daily,alerts"
+    }
     try:
         response = requests.get(OPENWEATHER_API_URL, params=params)
         response.raise_for_status()
@@ -61,8 +50,7 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды через One Call API: {e}")
         return None
 
-# --- Функции обработки изображений (без изменений) ---
-def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Optional[Dict[str, float]]) -> Optional[Image.Image]:
+def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -87,19 +75,15 @@ def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Op
         weather_text_lines = [
             f"Погода в г. {city_name}\n",
             f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
-            f"{weather_description}", f"Влажность: {humidity}%",
-            f"Ветер: {wind_direction_abbr}, {wind_speed_ms:.1f} м/с\n",
+            f"{weather_description}",
+            f"Влажность: {humidity}%",
+            f"Ветер: {wind_direction_abbr}, {wind_speed_ms:.1f} м/с",
         ]
-        if historical_data:
-            record_min = historical_data.get('record_min')
-            record_max = historical_data.get('record_max')
-            if record_min is not None and record_max is not None:
-                 weather_text_lines.append(f"Рекордный мин.: {record_min:.1f}°C")
-                 weather_text_lines.append(f"Рекордный макс.: {record_max:.1f}°C")
 
         weather_text = "\n".join(weather_text_lines)
+        
         plaque_width, padding, border_radius = int(width * 0.9), int(width * 0.04), int(width * 0.03)
-        font_size = int(width / 22)
+        font_size = int(width / 20)
         font = get_font(font_size)
         text_bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
@@ -119,18 +103,13 @@ def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Op
         logger.error(f"Ошибка при создании кадра для {city_name}: {e}")
         return None
 
-# --- ИЗМЕНЕНО: Функция create_weather_gif заменена на create_weather_video ---
 def create_weather_video(frames: List[Image.Image], output_path: str = "weather_report.mp4") -> str:
     if not frames:
         logger.error("Нет кадров для создания видео.")
         return ""
-
-    # Настройки видео
-    fps = 20  # Кадров в секунду. 20-25 дает плавную картинку
-    hold_duration_sec = 3  # Сколько секунд показывать каждый слайд
-    transition_steps = 15  # Количество кадров для перехода
-
-    # Рассчитываем, сколько раз нужно продублировать кадр для удержания
+    fps = 20
+    hold_duration_sec = 3
+    transition_steps = 15
     hold_frames_count = fps * hold_duration_sec
 
     try:
@@ -139,14 +118,12 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
             for i in range(num_cities):
                 current_pil_frame = frames[i]
                 next_pil_frame = frames[(i + 1) % num_cities]
-
-                # Добавляем основной кадр с вотермаркой (удерживаем на экране)
+                
                 main_frame_with_watermark = add_watermark(current_pil_frame.copy())
                 np_main_frame = np.array(main_frame_with_watermark)
                 for _ in range(hold_frames_count):
                     writer.append_data(np_main_frame)
 
-                # Добавляем кадры перехода
                 for step in range(1, transition_steps + 1):
                     alpha = step / transition_steps
                     blended_frame = Image.blend(current_pil_frame, next_pil_frame, alpha)
@@ -160,10 +137,11 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
         logger.error(f"Ошибка при создании MP4 файла: {e}")
         return ""
 
-# --- Вспомогательные функции (без изменений) ---
+# --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
     directions = ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"]
     return directions[round(deg / 22.5) % 16]
+
 def get_random_background_image(city_name: str) -> str | None:
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
     if os.path.isdir(city_folder):
@@ -171,6 +149,7 @@ def get_random_background_image(city_name: str) -> str | None:
         image_files = [f for f in os.listdir(city_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if image_files: return os.path.join(city_folder, random.choice(image_files))
     return None
+
 def round_rectangle(draw, xy, radius, fill):
     x1, y1, x2, y2 = xy
     draw.rectangle((x1 + radius, y1, x2 - radius, y2), fill=fill)
@@ -179,12 +158,14 @@ def round_rectangle(draw, xy, radius, fill):
     draw.pieslice((x2 - 2 * radius, y1, x2, y1 + 2 * radius), 270, 360, fill=fill)
     draw.pieslice((x1, y2 - 2 * radius, x1 + 2 * radius, y2), 90, 180, fill=fill)
     draw.pieslice((x2 - 2 * radius, y2 - 2 * radius, x2, y2), 0, 90, fill=fill)
+
 def get_font(font_size: int) -> ImageFont.FreeTypeFont:
     if font_size in font_cache: return font_cache[font_size]
     try: font = ImageFont.truetype("arial.ttf", font_size)
     except IOError: font = ImageFont.load_default()
     font_cache[font_size] = font
     return font
+
 def add_watermark(base_img: Image.Image) -> Image.Image:
     try:
         base_img = base_img.convert("RGBA")
@@ -204,6 +185,7 @@ def add_watermark(base_img: Image.Image) -> Image.Image:
     except Exception as e:
         logger.error(f"Ошибка при добавлении вотермарки: {e}")
         return base_img.convert("RGB")
+
 def save_message_id(message_id: int):
     messages = []
     if os.path.exists(MESSAGE_IDS_FILE):
@@ -219,11 +201,10 @@ def save_message_id(message_id: int):
 async def main():
     logger.info("--- Запуск основного процесса ---")
     openweather_api_key = os.getenv("OPENWEATHER_API_KEY")
-    visualcrossing_api_key = os.getenv("VISUALCROSSING_API_KEY")
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
 
-    if not all([telegram_bot_token, target_chat_id, openweather_api_key, visualcrossing_api_key]):
+    if not all([telegram_bot_token, target_chat_id, openweather_api_key]):
         logger.error("ОШИБКА: Отсутствуют необходимые переменные окружения.")
         return
 
@@ -231,12 +212,11 @@ async def main():
     frames = []
     for city_name, coords in CITIES.items():
         logger.info(f"Обработка города: {city_name}...")
-        weather_data, historical_data = await asyncio.gather(
-            get_current_weather(coords, openweather_api_key),
-            get_historical_records(coords['lat'], coords['lon'], visualcrossing_api_key)
-        )
+        
+        weather_data = await get_current_weather(coords, openweather_api_key)
+
         if weather_data:
-            frame = create_weather_frame(city_name, weather_data, historical_data)
+            frame = create_weather_frame(city_name, weather_data)
             if frame: frames.append(frame)
         else:
             logger.warning(f"Нет погодных данных для {city_name}. Пропускаю.")
@@ -246,7 +226,6 @@ async def main():
         logger.error("Не удалось создать ни одного кадра. Отправка отменена.")
         return
     
-    # ИЗМЕНЕНО: Создаем и отправляем видео вместо GIF
     video_path = "weather_report.mp4"
     create_weather_video(frames, video_path)
     
@@ -254,11 +233,10 @@ async def main():
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL), InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]])
         try:
             with open(video_path, 'rb') as video_file:
-                # ИСПОЛЬЗУЕМ bot.send_video
                 message = await bot.send_video(
                     chat_id=target_chat_id,
                     video=video_file,
-                    supports_streaming=True, # Полезный параметр для видео
+                    supports_streaming=True,
                     disable_notification=True
                 )
             save_message_id(message.message_id)
