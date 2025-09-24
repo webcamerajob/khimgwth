@@ -60,7 +60,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
     try:
         img = Image.open(background_path).convert("RGB")
         
-        target_width = 800
+        target_width = 720
         w_percent = (target_width / float(img.size[0]))
         h_size = int((float(img.size[1]) * float(w_percent)))
         img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
@@ -179,7 +179,7 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
     transition_steps = 15
     hold_duration = 3000
     blend_duration = 100
-    num_colors = 128
+    num_colors = 256
     num_frames = len(frames)
     for i in range(num_frames):
         current_frame = frames[i]
