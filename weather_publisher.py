@@ -93,18 +93,24 @@ async def get_current_weather(coords: Dict[str, float], api_key: str, city_name_
         return None
 
 # ИЗМЕНЕНО: Парсинг данных адаптирован под ответ от One Call API
-def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | None:
-    """Создает кадр изображения с текстом погоды."""
+# ИЗМЕНЕНО: Функция теперь принимает и отображает исторические данные
+def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Optional[Dict[str, float]]) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
     if not background_path:
         return None
 
     try:
-        # Данные теперь лежат в ключе 'current'
-        current_weather = weather_data['current']
-
         img = Image.open(background_path).convert("RGB")
-        width, height = img.size
+
+        # --- ИЗМЕНЕНИЕ РАЗРЕШЕНИЯ ---
+        target_width = 600  # <-- Изменено на 600px ✅
+        w_percent = (target_width / float(img.size[0]))
+        h_size = int((float(img.size[1]) * float(w_percent)))
+        img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
+        # --- КОНЕЦ БЛОКА ---
+
+        current_weather = weather_data['current']
+        width, height = img.size # Обновляем размеры после resize
         draw = ImageDraw.Draw(img)
 
         temp = current_weather['temp']
@@ -118,38 +124,39 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Image.Image | No
 
         weather_text_lines = [
             f"Погода в г. {city_name}\n",
-            f"Температура: {temp:.1f}°C",
-            f"Ощущается как: {feels_like:.1f}°C",
+            f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
             f"{weather_description}",
             f"Влажность: {humidity}%",
-            f"Ветер: {wind_direction_abbr}, {wind_speed_kmh:.1f} км/ч",
+            f"Ветер: {wind_direction_abbr}, {wind_speed_kmh:.1f} км/ч\n",
         ]
-        weather_text = "\n".join(weather_text_lines)
+        
+        if historical_data:
+            hist_min = historical_data.get('min')
+            hist_max = historical_data.get('max')
+            if hist_min is not None and hist_max is not None:
+                 weather_text_lines.append(f"Исторический мин.: {hist_min:.1f}°C")
+                 weather_text_lines.append(f"Исторический макс.: {hist_max:.1f}°C")
 
-        # ... (остальной код для рисования остался без изменений) ...
+        weather_text = "\n".join(weather_text_lines)
+        
         plaque_width = int(width * 0.9)
         padding = int(width * 0.04)
         border_radius = int(width * 0.03)
-        font_size = int(width / 20)
+        font_size = int(width / 22)
         font = get_font(font_size)
-
         text_bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         plaque_height = text_height + 2 * padding
-
         plaque_x1 = (width - plaque_width) // 2
         plaque_y1 = (height - plaque_height) // 2
         plaque_x2 = plaque_x1 + plaque_width
         plaque_y2 = plaque_y1 + plaque_height
-
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
         round_rectangle(plaque_draw, (plaque_x1, plaque_y1, plaque_x2, plaque_y2), border_radius, (0, 0, 0, 160))
-
         img.paste(plaque_img, (0,0), plaque_img)
         draw = ImageDraw.Draw(img)
-
         text_x = plaque_x1 + (plaque_width - text_width) // 2
         text_y = plaque_y1 + (plaque_height - text_height) // 2
         draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
