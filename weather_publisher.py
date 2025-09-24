@@ -175,7 +175,7 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
         logger.error("Нет кадров для создания GIF.")
         return ""
     final_frames = []
-    transition_steps = 5
+    transition_steps = 15
     hold_duration = 3000
     blend_duration = 100
     num_colors = 128
