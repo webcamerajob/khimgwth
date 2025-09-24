@@ -2,85 +2,43 @@ import logging
 import requests
 import asyncio
 import os
-import datetime
 from typing import Dict, Any, List, Optional
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Bot
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 import yaml
 
 font_cache: Dict[int, ImageFont.FreeTypeFont] = {}
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Настройки и Константы ---
-# ИЗМЕНЕНО: URL для One Call API 3.0
 ONE_CALL_API_URL = "https://api.openweathermap.org/data/3.0/onecall"
-
-# НОВОЕ: Координаты городов, так как Geocoding API недоступен
 CITIES = {
     "Пномпень": {"lat": 11.5564, "lon": 104.9282},
     "Сиануквиль": {"lat": 10.6276, "lon": 103.5224},
     "Сиемреап": {"lat": 13.3639, "lon": 103.859}
 }
-
-# Переключатель тестового режима
 TEST_MODE = os.getenv("TEST_MODE", "False").lower() == "true"
-
-# Настройки вотермарки
 WATERMARK_FILE = "watermark.png"
 WATERMARK_SCALE_FACTOR = 0.5
-
-# Настройки кнопок
 AD_BUTTON_TEXT = "Новости 🇰🇭"
 AD_BUTTON_URL = "https://t.me/cambodiacriminal"
 NEWS_BUTTON_TEXT = "Попробуй! 🆕"
 NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
-
-# Путь к папке с фонами
 BACKGROUNDS_FOLDER = "backgrounds2"
-
-# Файл для сохранения ID сообщений
 MESSAGE_IDS_FILE = "message_ids.yml"
-
-# --- Предустановленные данные о погоде (для TEST_MODE) ---
-PRESET_WEATHER_DATA = {
-    "Пномпень": {
-        'current': {
-            'temp': 32.5, 'feels_like': 38.0, 'humidity': 65,
-            'weather': [{'description': 'ясно'}],
-            'wind_speed': 4.22, 'wind_deg': 135
-        }
-    },
-    # ... (остальные города для теста можно добавить по аналогии)
-}
 
 # --- Функции ---
 
-def get_wind_direction_abbr(deg: int) -> str:
-    """Преобразует градусы в аббревиатуру направления ветра."""
-    directions = ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"]
-    index = round(deg / 22.5) % 16
-    return directions[index]
-
-# ИЗМЕНЕНО: Функция теперь использует One Call API
-async def get_current_weather(coords: Dict[str, float], api_key: str, city_name_for_test: str) -> Dict | None:
+async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
     """Получает текущие погодные условия по координатам через One Call API."""
-    if TEST_MODE:
-        logger.info(f"Используются предустановленные данные для: {city_name_for_test}")
-        return PRESET_WEATHER_DATA.get(city_name_for_test)
-
     params = {
         "lat": coords["lat"],
         "lon": coords["lon"],
         "appid": api_key,
         "units": "metric",
         "lang": "ru",
-        "exclude": "minutely,hourly,daily,alerts" # Запрашиваем только текущую погоду
+        "exclude": "minutely,hourly,daily,alerts"
     }
     try:
         response = requests.get(ONE_CALL_API_URL, params=params)
@@ -92,25 +50,21 @@ async def get_current_weather(coords: Dict[str, float], api_key: str, city_name_
         logger.error(f"Ошибка при запросе погоды через One Call API: {e}")
         return None
 
-# ИЗМЕНЕНО: Парсинг данных адаптирован под ответ от One Call API
-# ИЗМЕНЕНО: Функция теперь принимает и отображает исторические данные
-def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Optional[Dict[str, float]]) -> Optional[Image.Image]:
+def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.Image]:
+    """Создает кадр изображения с текстом погоды."""
     background_path = get_random_background_image(city_name)
     if not background_path:
         return None
 
     try:
         img = Image.open(background_path).convert("RGB")
-
-        # --- ИЗМЕНЕНИЕ РАЗРЕШЕНИЯ ---
-        target_width = 600  # <-- Изменено на 600px ✅
+        target_width = 600
         w_percent = (target_width / float(img.size[0]))
         h_size = int((float(img.size[1]) * float(w_percent)))
         img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
-        # --- КОНЕЦ БЛОКА ---
-
+        
         current_weather = weather_data['current']
-        width, height = img.size # Обновляем размеры после resize
+        width, height = img.size
         draw = ImageDraw.Draw(img)
 
         temp = current_weather['temp']
@@ -124,25 +78,19 @@ def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Op
 
         weather_text_lines = [
             f"Погода в г. {city_name}\n",
-            f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
+            f"Температура: {temp:.1f}°C",
+            f"Ощущается как: {feels_like:.1f}°C",
             f"{weather_description}",
             f"Влажность: {humidity}%",
-            f"Ветер: {wind_direction_abbr}, {wind_speed_kmh:.1f} км/ч\n",
+            f"Ветер: {wind_direction_abbr}, {wind_speed_kmh:.1f} км/ч",
         ]
-        
-        if historical_data:
-            hist_min = historical_data.get('min')
-            hist_max = historical_data.get('max')
-            if hist_min is not None and hist_max is not None:
-                 weather_text_lines.append(f"Исторический мин.: {hist_min:.1f}°C")
-                 weather_text_lines.append(f"Исторический макс.: {hist_max:.1f}°C")
 
         weather_text = "\n".join(weather_text_lines)
         
         plaque_width = int(width * 0.9)
         padding = int(width * 0.04)
         border_radius = int(width * 0.03)
-        font_size = int(width / 22)
+        font_size = int(width / 20) # Вернули шрифт к исходному размеру
         font = get_font(font_size)
         text_bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_width = text_bbox[2] - text_bbox[0]
@@ -167,7 +115,10 @@ def create_weather_frame(city_name: str, weather_data: Dict, historical_data: Op
         logger.error(f"Ошибка при создании кадра для {city_name}: {e}")
         return None
 
-# --- Основной блок и вспомогательные функции (без изменений) ---
+def get_wind_direction_abbr(deg: int) -> str:
+    directions = ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"]
+    index = round(deg / 22.5) % 16
+    return directions[index]
 
 def get_random_background_image(city_name: str) -> str | None:
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
@@ -221,25 +172,40 @@ def add_watermark(base_img: Image.Image) -> Image.Image:
 
 def create_weather_gif(frames: List[Image.Image], output_path: str = "output/weather.gif") -> str:
     if not frames:
+        logger.error("Нет кадров для создания GIF.")
         return ""
     final_frames = []
-    durations = []
-    transition_steps = 15
+    transition_steps = 5
     hold_duration = 3000
-    blend_duration = 80
+    blend_duration = 100
+    num_colors = 128
     num_frames = len(frames)
     for i in range(num_frames):
         current_frame = frames[i]
         next_frame = frames[(i + 1) % num_frames]
-        final_frames.append(add_watermark(current_frame.copy()))
-        durations.append(hold_duration)
+        base_with_watermark = add_watermark(current_frame.copy())
+        quantized_frame = base_with_watermark.quantize(colors=num_colors, method=Image.Quantize.MEDIANCUT)
+        final_frames.append(quantized_frame)
         for step in range(1, transition_steps + 1):
             alpha = step / transition_steps
             blended = Image.blend(current_frame, next_frame, alpha)
-            final_frames.append(add_watermark(blended))
-            durations.append(blend_duration)
-    final_frames[0].save(output_path, save_all=True, append_images=final_frames[1:], duration=durations, loop=0, optimize=True, disposal=2)
-    logger.info(f"GIF-анимация успешно создана: {output_path}")
+            blended_with_watermark = add_watermark(blended)
+            quantized_blended = blended_with_watermark.quantize(colors=num_colors, method=Image.Quantize.MEDIANCUT)
+            final_frames.append(quantized_blended)
+    durations = []
+    for i in range(num_frames):
+        durations.append(hold_duration)
+        durations.extend([blend_duration] * transition_steps)
+    final_frames[0].save(
+        output_path,
+        save_all=True,
+        append_images=final_frames[1:],
+        duration=durations,
+        loop=0,
+        optimize=True,
+        disposal=2
+    )
+    logger.info(f"Оптимизированный GIF успешно создан: {output_path}")
     return output_path
 
 def save_message_id(message_id: int):
@@ -256,7 +222,6 @@ def save_message_id(message_id: int):
     with open(MESSAGE_IDS_FILE, 'w') as f:
         yaml.dump(messages, f)
 
-# ИЗМЕНЕНО: Основной цикл теперь работает с новым словарём CITIES
 async def main():
     logger.info("--- Запуск основного процесса ---")
     openweather_api_key = os.getenv("OPENWEATHER_API_KEY")
@@ -272,23 +237,23 @@ async def main():
 
     for city_name, coords in CITIES.items():
         logger.info(f"Обработка города: {city_name}...")
-        weather_data = await get_current_weather(coords, openweather_api_key, city_name)
+        
+        weather_data = await get_current_weather(coords, openweather_api_key)
 
         if weather_data:
-            frame = create_weather_frame(city_name, weather_data)
+            frame = create_weather_frame(city_name, weather_data) # <-- Вызов функции исправлен
             if frame:
                 frames.append(frame)
         else:
             logger.warning(f"Нет погодных данных для {city_name}. Пропускаю.")
-        await asyncio.sleep(1)
+        
+        await asyncio.sleep(0.5)
 
     if not frames:
         logger.error("Не удалось создать ни одного кадра. Отправка отменена.")
         return
-
     gif_path = "weather_report.gif"
     create_weather_gif(frames, gif_path)
-
     if os.path.exists(gif_path):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL), InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]])
         try:
@@ -303,8 +268,9 @@ async def main():
                 os.remove(gif_path)
     else:
         logger.error("Файл GIF не был создан.")
-
     logger.info("--- Завершение работы ---")
 
 if __name__ == "__main__":
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
