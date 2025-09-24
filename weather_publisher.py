@@ -215,7 +215,7 @@ def save_message_id(message_id: int):
             except yaml.YAMLError: pass
     messages.append({'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()})
     with open(MESSAGE_IDS_FILE, 'w') as f: yaml.dump(messages, f)
-
+        
 # --- Основной исполняемый блок ---
 async def main():
     logger.info("--- Запуск основного процесса ---")
@@ -252,17 +252,17 @@ async def main():
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL), InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]])
         try:
             with open(video_path, 'rb') as video_file:
-                message = await bot.send_video(
+                # ИЗМЕНЕНО: Возвращаем bot.send_animation
+                message = await bot.send_animation(
                     chat_id=target_chat_id,
-                    video=video_file,
-                    supports_streaming=True,
+                    animation=video_file, # <-- Параметр теперь называется 'animation'
                     disable_notification=True,
                     reply_markup=keyboard
                 )
             save_message_id(message.message_id)
-            logger.info(f"Видео MP4 успешно отправлено в чат {target_chat_id}.")
+            logger.info(f"Анимация MP4 успешно отправлена в чат {target_chat_id}.")
         except Exception as e:
-            logger.error(f"Ошибка при отправке MP4: {e}")
+            logger.error(f"Ошибка при отправке MP4 анимации: {e}")
         finally:
             if os.path.exists(video_path): os.remove(video_path)
     else:
