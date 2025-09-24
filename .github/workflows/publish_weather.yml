@@ -1,59 +1,57 @@
 name: Publish Weather Updates
 
 on:
-  workflow_dispatch: # Позволяет запускать рабочий процесс вручную из интерфейса GitHub
+  workflow_dispatch: # Позволяет запускать рабочий процесс вручную
   schedule:
-    # Это соответствует 06:00, 12:00 и 18:00 по времени Пномпеня (GMT+7) без учета летнего времени.
-    - cron: '50 4,10,22 * * *'
+    # Запуск в 05:50, 11:50 и 17:50 по времени Пномпеня (UTC+7)
+    - cron: '50 22,4,10 * * *'
 
 jobs:
   publish:
-    runs-on: ubuntu-latest # Запускать на чистой виртуальной машине Ubuntu
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Права на запись для коммита файла message_ids.yml
     steps:
-    - name: Checkout repository # Шаг 1: Клонировать ваш репозиторий
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        # Для коммита изменений необходим токен с правами записи
         persist-credentials: true
-        fetch-depth: 0 # Получить всю историю для корректного коммита
+        fetch-depth: 0
 
-    - name: Set up Python # Шаг 2: Настроить среду Python
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # Рекомендуется указывать конкретную версию Python
+        python-version: '3.10'
 
-    - name: Install dependencies # Шаг 3: Установить необходимые библиотеки
+    - name: Install dependencies
       run: |
-        pip install requests python-telegram-bot Pillow httpx PyYAML # Добавляем PyYAML для работы с файлом данных
+        pip install requests python-telegram-bot Pillow PyYAML
 
-    - name: Create backgrounds folders # Шаг 4: Создать папки для фонов, если их нет (важно для правильной работы скрипта)
+    - name: Create backgrounds folders
       run: |
-        mkdir -p backgrounds/Пномпень
-        mkdir -p backgrounds/Сиануквиль
-        mkdir -p backgrounds/Сиемреап
-        # Примечание: Убедитесь, что ваши фоновые изображения находятся в этих папках
-        # в репозитории GitHub (т.е. закоммичены и запушены).
+        # Название папки должно соответствовать переменной BACKGROUNDS_FOLDER в скрипте
+        mkdir -p backgrounds2/Пномпень
+        mkdir -p backgrounds2/Сиануквиль
+        mkdir -p backgrounds2/Сиемреап
 
-    - name: Run Python script # Шаг 5: Запустить ваш Python-скрипт
+    - name: Run Python script
       env:
         # Передаем секреты GitHub в переменные окружения для скрипта
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        ACCUWEATHER_API_KEY: ${{ secrets.ACCUWEATHER_API_KEY }}
+        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }} # <-- ИСПРАВЛЕНО
         TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Важно: Этот секрет создается автоматически GitHub'ом
-        TEST_MODE: "False" # Установите "True" для включения тестового режима (использования предустановленных данных)
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TEST_MODE: "False"
       run: python weather_publisher.py
 
-    - name: Commit and Push Changes # Шаг 6: Закоммитить и отправить изменения (сохраненные ID сообщений)
+    - name: Commit and Push Changes
       run: |
         git config user.name "GitHub Actions Bot"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add message_ids.yml
         if ! git diff --cached --quiet; then
-          git commit -m "chore: Save sent message IDs for deletion"
-          git pull --rebase origin main
+          git commit -m "chore: Update message IDs"
+          git pull --rebase
           git push
         else
           echo "✅ message_ids.yml unchanged"
