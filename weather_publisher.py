@@ -60,7 +60,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
     try:
         img = Image.open(background_path).convert("RGB")
         
-        target_width = 720
+        target_width = 800
         w_percent = (target_width / float(img.size[0]))
         h_size = int((float(img.size[1]) * float(w_percent)))
         img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
