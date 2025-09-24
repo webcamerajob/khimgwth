@@ -179,7 +179,7 @@ def create_weather_gif(frames: List[Image.Image], output_path: str = "output/wea
     transition_steps = 15
     hold_duration = 3000
     blend_duration = 100
-    num_colors = 256
+    num_colors = 128
     num_frames = len(frames)
     for i in range(num_frames):
         current_frame = frames[i]
