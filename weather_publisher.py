@@ -34,6 +34,7 @@ MESSAGE_IDS_FILE = "message_ids.yml"
 # --- Функции ---
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
+    """Получает текущие погодные условия по координатам через One Call API."""
     params = {
         "lat": coords["lat"],
         "lon": coords["lon"],
@@ -51,6 +52,7 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         return None
 
 def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.Image]:
+    """Создает кадр изображения с текстом погоды."""
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -104,6 +106,7 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
         return None
 
 def create_weather_video(frames: List[Image.Image], output_path: str = "weather_report.mp4") -> str:
+    """Создает видео MP4 из списка кадров."""
     if not frames:
         logger.error("Нет кадров для создания видео.")
         return ""
@@ -139,18 +142,22 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
 
 # --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
+    """Возвращает аббревиатуру для направления ветра."""
     directions = ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"]
     return directions[round(deg / 22.5) % 16]
 
 def get_random_background_image(city_name: str) -> str | None:
+    """Возвращает случайный путь к файлу изображения фона для заданного города."""
     city_folder = os.path.join(BACKGROUNDS_FOLDER, city_name)
     if os.path.isdir(city_folder):
         import random
         image_files = [f for f in os.listdir(city_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if image_files: return os.path.join(city_folder, random.choice(image_files))
+    logger.warning(f"Папка с фонами не найдена или пуста для города: {city_name}")
     return None
 
 def round_rectangle(draw, xy, radius, fill):
+    """Рисует прямоугольник со скругленными углами."""
     x1, y1, x2, y2 = xy
     draw.rectangle((x1 + radius, y1, x2 - radius, y2), fill=fill)
     draw.rectangle((x1, y1 + radius, x2, y2 - radius), fill=fill)
@@ -160,6 +167,7 @@ def round_rectangle(draw, xy, radius, fill):
     draw.pieslice((x2 - 2 * radius, y2 - 2 * radius, x2, y2), 0, 90, fill=fill)
 
 def get_font(font_size: int) -> ImageFont.FreeTypeFont:
+    """Возвращает шрифт нужного размера из кэша или загружает его."""
     if font_size in font_cache: return font_cache[font_size]
     try: font = ImageFont.truetype("arial.ttf", font_size)
     except IOError: font = ImageFont.load_default()
@@ -167,6 +175,7 @@ def get_font(font_size: int) -> ImageFont.FreeTypeFont:
     return font
 
 def add_watermark(base_img: Image.Image) -> Image.Image:
+    """Накладывает вотермарку на изображение."""
     try:
         base_img = base_img.convert("RGBA")
         if not os.path.exists(WATERMARK_FILE): return base_img.convert("RGB")
@@ -187,6 +196,7 @@ def add_watermark(base_img: Image.Image) -> Image.Image:
         return base_img.convert("RGB")
 
 def save_message_id(message_id: int):
+    """Сохраняет ID отправленного сообщения в YAML файл."""
     messages = []
     if os.path.exists(MESSAGE_IDS_FILE):
         with open(MESSAGE_IDS_FILE, 'r') as f:
@@ -237,7 +247,8 @@ async def main():
                     chat_id=target_chat_id,
                     video=video_file,
                     supports_streaming=True,
-                    disable_notification=True
+                    disable_notification=True,
+                    reply_markup=keyboard
                 )
             save_message_id(message.message_id)
             logger.info(f"Видео MP4 успешно отправлено в чат {target_chat_id}.")
