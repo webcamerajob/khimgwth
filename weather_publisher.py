@@ -35,38 +35,30 @@ MESSAGE_IDS_FILE = "message_ids.yml"
 # --- Функции ---
 
 async def delete_old_messages(bot: Bot, chat_id: str):
-    """Читает ID из файла и удаляет соответствующие сообщения."""
-    if not os.path.exists(MESSAGE_IDS_FILE):
-        return
-
+    if not os.path.exists(MESSAGE_IDS_FILE): return
     try:
         with open(MESSAGE_IDS_FILE, 'r') as f:
             messages_to_delete = yaml.safe_load(f)
-        
-        if not messages_to_delete or not isinstance(messages_to_delete, list):
-            return
-            
+        if not messages_to_delete or not isinstance(messages_to_delete, list): return
         logger.info(f"Найдено {len(messages_to_delete)} сообщений для удаления.")
         for msg_info in messages_to_delete:
-            message_id = msg_info.get('message_id')
-            if message_id:
+            if message_id := msg_info.get('message_id'):
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                     logger.info(f"Сообщение {message_id} успешно удалено.")
                 except BadRequest as e:
                     if "message to delete not found" in str(e).lower() or "message can't be deleted" in str(e).lower():
-                        logger.warning(f"Не удалось удалить сообщение {message_id} (возможно, уже удалено): {e}")
-                    else:
-                        raise e
+                        logger.warning(f"Не удалось удалить сообщение {message_id} (возможно, уже удалено).")
+                    else: raise e
                 await asyncio.sleep(1)
     except Exception as e:
-        logger.error(f"Ошибка при чтении или удалении старых сообщений: {e}")
+        logger.error(f"Ошибка при удалении старых сообщений: {e}")
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
-    """Получает текущие погодные условия по координатам через One Call API."""
+    # ИЗМЕНЕНО: Запрашиваем почасовой и дневной прогнозы
     params = {
         "lat": coords["lat"], "lon": coords["lon"], "appid": api_key,
-        "units": "metric", "lang": "ru", "exclude": "minutely,hourly,daily,alerts"
+        "units": "metric", "lang": "ru", "exclude": "minutely,alerts"
     }
     try:
         response = requests.get(OPENWEATHER_API_URL, params=params)
@@ -76,7 +68,37 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.Image]:
+# НОВАЯ ФУНКЦИЯ для анализа и форматирования прогноза осадков
+def format_precipitation_forecast(weather_data: Dict) -> str:
+    """Анализирует почасовой прогноз и возвращает краткую строку об осадках."""
+    try:
+        hourly_forecast = weather_data.get('hourly', [])
+        daily_pop = weather_data.get('daily', [{}])[0].get('pop', 0)
+        timezone_offset = weather_data.get('timezone_offset', 0)
+        
+        # Если общая вероятность осадков на день очень низкая
+        if daily_pop < 0.1:
+            return "Осадков не ожидается"
+
+        # Ищем первый час со значительной вероятностью осадков
+        for hour in hourly_forecast[:18]: # Смотрим на 18 часов вперед
+            pop = hour.get('pop', 0)
+            if pop > 0.35: # Порог вероятности 35%
+                dt_object = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
+                local_time = dt_object + datetime.timedelta(seconds=timezone_offset)
+                return f"Возможен дождь после {local_time.strftime('%H:%M')}"
+
+        # Если явных пиков нет, но общая вероятность есть
+        if daily_pop > 0.2:
+            return "Возможны небольшие осадки"
+
+        return "Осадков не ожидается"
+    except Exception as e:
+        logger.error(f"Ошибка при форматировании прогноза осадков: {e}")
+        return "Прогноз осадков недоступен"
+
+
+def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
     """Создает кадр изображения с текстом погоды."""
     background_path = get_random_background_image(city_name)
     if not background_path: return None
@@ -100,12 +122,13 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
             f"Погода в г. {city_name}\n",
             f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
             f"{desc}", f"Влажность: {humidity}%",
-            f"Ветер: {wind_dir}, {wind_speed:.1f} м/с",
+            f"Ветер: {wind_dir}, {wind_speed:.1f} м/с\n",
+            f"Прогноз: {precipitation_forecast}" # <-- ИЗМЕНЕНО: Добавлена строка прогноза
         ]
         weather_text = "\n".join(text_lines)
         
         plaque_width, padding, border_radius = int(width * 0.9), int(width * 0.04), int(width * 0.03)
-        font_size = int(width / 20)
+        font_size = int(width / 22) # Слегка уменьшим шрифт
         font = get_font(font_size)
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -126,7 +149,6 @@ def create_weather_frame(city_name: str, weather_data: Dict) -> Optional[Image.I
         return None
 
 def create_weather_video(frames: List[Image.Image], output_path: str = "weather_report.mp4") -> str:
-    """Создает видео MP4 из списка кадров."""
     if not frames: return ""
     fps, hold_sec, steps = 20, 3, 15
     hold_frames = fps * hold_sec
@@ -147,7 +169,6 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
         return ""
 
 def save_message_id(message_id: int):
-    """Сохраняет ID одного сообщения для удаления на следующем запуске."""
     new_message = [{'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}]
     with open(MESSAGE_IDS_FILE, 'w') as f:
         yaml.dump(new_message, f)
@@ -161,7 +182,6 @@ def get_random_background_image(city_name: str) -> str | None:
         import random
         files = [f for f in os.listdir(city_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if files: return os.path.join(city_folder, random.choice(files))
-    logger.warning(f"Папка с фонами не найдена или пуста для города: {city_name}")
     return None
 def round_rectangle(draw, xy, r, fill):
     x1, y1, x2, y2 = xy
@@ -204,7 +224,6 @@ async def main():
         return
 
     bot = Bot(token=telegram_bot_token)
-    
     await delete_old_messages(bot, target_chat_id)
 
     frames = []
@@ -212,7 +231,9 @@ async def main():
         logger.info(f"Обработка города: {city_name}...")
         weather_data = await get_current_weather(coords, openweather_api_key)
         if weather_data:
-            frame = create_weather_frame(city_name, weather_data)
+            # ИЗМЕНЕНО: Получаем и передаем строку с прогнозом
+            precipitation_forecast = format_precipitation_forecast(weather_data)
+            frame = create_weather_frame(city_name, weather_data, precipitation_forecast)
             if frame: frames.append(frame)
         else:
             logger.warning(f"Нет данных для {city_name}.")
