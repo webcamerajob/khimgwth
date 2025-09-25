@@ -55,7 +55,6 @@ async def delete_old_messages(bot: Bot, chat_id: str):
         logger.error(f"Ошибка при удалении старых сообщений: {e}")
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
-    # ИЗМЕНЕНО: Запрашиваем почасовой и дневной прогнозы
     params = {
         "lat": coords["lat"], "lon": coords["lon"], "appid": api_key,
         "units": "metric", "lang": "ru", "exclude": "minutely,alerts"
@@ -68,27 +67,33 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# НОВАЯ ФУНКЦИЯ для анализа и форматирования прогноза осадков
+# ИСПРАВЛЕНО: Функция теперь смотрит только в будущее
 def format_precipitation_forecast(weather_data: Dict) -> str:
     """Анализирует почасовой прогноз и возвращает краткую строку об осадках."""
     try:
         hourly_forecast = weather_data.get('hourly', [])
         daily_pop = weather_data.get('daily', [{}])[0].get('pop', 0)
         timezone_offset = weather_data.get('timezone_offset', 0)
-        
-        # Если общая вероятность осадков на день очень низкая
+        # Получаем текущее время из ответа API для точного сравнения
+        current_timestamp = weather_data.get('current', {}).get('dt')
+
+        if not current_timestamp:
+            return "Прогноз осадков недоступен"
+
         if daily_pop < 0.1:
             return "Осадков не ожидается"
 
-        # Ищем первый час со значительной вероятностью осадков
-        for hour in hourly_forecast[:18]: # Смотрим на 18 часов вперед
+        for hour in hourly_forecast[:18]:
+            # Пропускаем часы, которые уже прошли
+            if hour.get('dt', 0) <= current_timestamp:
+                continue
+
             pop = hour.get('pop', 0)
-            if pop > 0.35: # Порог вероятности 35%
+            if pop > 0.35:
                 dt_object = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
                 local_time = dt_object + datetime.timedelta(seconds=timezone_offset)
                 return f"Возможен дождь после {local_time.strftime('%H:%M')}"
 
-        # Если явных пиков нет, но общая вероятность есть
         if daily_pop > 0.2:
             return "Возможны небольшие осадки"
 
@@ -99,7 +104,6 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
 
 
 def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
-    """Создает кадр изображения с текстом погоды."""
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -123,12 +127,12 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
             f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
             f"{desc}", f"Влажность: {humidity}%",
             f"Ветер: {wind_dir}, {wind_speed:.1f} м/с\n",
-            f"Прогноз: {precipitation_forecast}" # <-- ИЗМЕНЕНО: Добавлена строка прогноза
+            f"Прогноз: {precipitation_forecast}"
         ]
         weather_text = "\n".join(text_lines)
         
         plaque_width, padding, border_radius = int(width * 0.9), int(width * 0.04), int(width * 0.03)
-        font_size = int(width / 22) # Слегка уменьшим шрифт
+        font_size = int(width / 22)
         font = get_font(font_size)
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -231,7 +235,6 @@ async def main():
         logger.info(f"Обработка города: {city_name}...")
         weather_data = await get_current_weather(coords, openweather_api_key)
         if weather_data:
-            # ИЗМЕНЕНО: Получаем и передаем строку с прогнозом
             precipitation_forecast = format_precipitation_forecast(weather_data)
             frame = create_weather_frame(city_name, weather_data, precipitation_forecast)
             if frame: frames.append(frame)
