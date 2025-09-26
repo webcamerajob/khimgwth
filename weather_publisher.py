@@ -67,37 +67,56 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИСПРАВЛЕНО: Функция теперь смотрит только в будущее
+# ИЗМЕНЕНО: Полностью переписана логика прогноза осадков
 def format_precipitation_forecast(weather_data: Dict) -> str:
-    """Анализирует почасовой прогноз и возвращает краткую строку об осадках."""
+    """Анализирует почасовой прогноз, группирует часы с осадками в интервалы и форматирует строку."""
     try:
         hourly_forecast = weather_data.get('hourly', [])
-        daily_pop = weather_data.get('daily', [{}])[0].get('pop', 0)
         timezone_offset = weather_data.get('timezone_offset', 0)
-        # Получаем текущее время из ответа API для точного сравнения
         current_timestamp = weather_data.get('current', {}).get('dt')
 
-        if not current_timestamp:
+        if not hourly_forecast or not current_timestamp:
             return "Прогноз осадков недоступен"
 
-        if daily_pop < 0.1:
-            return "Осадков не ожидается"
-
-        for hour in hourly_forecast[:18]:
-            # Пропускаем часы, которые уже прошли
-            if hour.get('dt', 0) <= current_timestamp:
-                continue
-
-            pop = hour.get('pop', 0)
-            if pop > 0.35:
+        # 1. Найти все будущие часы с высокой вероятностью осадков
+        rainy_hours = []
+        for hour in hourly_forecast[:24]: # Анализируем следующие 24 часа
+            if hour.get('dt', 0) > current_timestamp and hour.get('pop', 0) > 0.35:
                 dt_object = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
                 local_time = dt_object + datetime.timedelta(seconds=timezone_offset)
-                return f"Возможен дождь после {local_time.strftime('%H:%M')}"
+                rainy_hours.append(local_time)
 
-        if daily_pop > 0.2:
-            return "Возможны небольшие осадки"
+        if not rainy_hours:
+            return "Осадков не ожидается"
 
-        return "Осадков не ожидается"
+        # 2. Сгруппировать последовательные часы в интервалы
+        intervals = []
+        if rainy_hours:
+            start_interval = rainy_hours[0]
+            end_interval = rainy_hours[0]
+            for i in range(1, len(rainy_hours)):
+                # Проверяем, идет ли следующий час сразу за предыдущим
+                if rainy_hours[i] == end_interval + datetime.timedelta(hours=1):
+                    end_interval = rainy_hours[i]
+                else:
+                    intervals.append((start_interval, end_interval))
+                    start_interval = rainy_hours[i]
+                    end_interval = rainy_hours[i]
+            intervals.append((start_interval, end_interval))
+
+        # 3. Отформатировать интервалы в строку
+        formatted_parts = []
+        for start, end in intervals:
+            if start == end:
+                # Одиночный час
+                formatted_parts.append(f"в ~{start.strftime('%H:%M')}")
+            else:
+                # Интервал
+                end_time_display = end + datetime.timedelta(hours=1)
+                formatted_parts.append(f"с {start.strftime('%H:%M')} до {end_time_display.strftime('%H:%M')}")
+
+        return "Дождь: " + " и ".join(formatted_parts)
+
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза осадков: {e}")
         return "Прогноз осадков недоступен"
