@@ -67,55 +67,52 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Полностью переписана логика прогноза осадков
+# ИЗМЕНЕНО: Полностью переписана логика прогноза осадков для надежности
 def format_precipitation_forecast(weather_data: Dict) -> str:
-    """Анализирует почасовой прогноз, группирует часы с осадками в интервалы и форматирует строку."""
+    """Анализирует почасовой прогноз и ищет ближайший интервал осадков."""
     try:
         hourly_forecast = weather_data.get('hourly', [])
         timezone_offset = weather_data.get('timezone_offset', 0)
         current_timestamp = weather_data.get('current', {}).get('dt')
 
         if not hourly_forecast or not current_timestamp:
-            return "Прогноз осадков недоступен"
-
-        # 1. Найти все будущие часы с высокой вероятностью осадков
-        rainy_hours = []
-        for hour in hourly_forecast[:24]: # Анализируем следующие 24 часа
-            if hour.get('dt', 0) > current_timestamp and hour.get('pop', 0) > 0.35:
-                dt_object = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
-                local_time = dt_object + datetime.timedelta(seconds=timezone_offset)
-                rainy_hours.append(local_time)
-
-        if not rainy_hours:
             return "Осадков не ожидается"
 
-        # 2. Сгруппировать последовательные часы в интервалы
-        intervals = []
-        if rainy_hours:
-            start_interval = rainy_hours[0]
-            end_interval = rainy_hours[0]
-            for i in range(1, len(rainy_hours)):
-                # Проверяем, идет ли следующий час сразу за предыдущим
-                if rainy_hours[i] == end_interval + datetime.timedelta(hours=1):
-                    end_interval = rainy_hours[i]
-                else:
-                    intervals.append((start_interval, end_interval))
-                    start_interval = rainy_hours[i]
-                    end_interval = rainy_hours[i]
-            intervals.append((start_interval, end_interval))
+        first_rain_hour = None
+        
+        # 1. Находим первый будущий час с дождем
+        for hour in hourly_forecast[:24]:
+            if hour.get('dt', 0) > current_timestamp and hour.get('pop', 0) > 0.35:
+                first_rain_hour = hour
+                break
+        
+        if not first_rain_hour:
+            return "Осадков не ожидается"
 
-        # 3. Отформатировать интервалы в строку
-        formatted_parts = []
-        for start, end in intervals:
-            if start == end:
-                # Одиночный час
-                formatted_parts.append(f"в ~{start.strftime('%H:%M')}")
+        # 2. Находим, как долго этот дождь будет продолжаться
+        start_time_dt = datetime.datetime.fromtimestamp(first_rain_hour['dt'], tz=datetime.timezone.utc)
+        end_time_dt = start_time_dt
+        
+        start_index = hourly_forecast.index(first_rain_hour)
+        
+        for i in range(start_index + 1, len(hourly_forecast)):
+            next_hour = hourly_forecast[i]
+            next_hour_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
+            
+            # Если следующий час идет подряд и в нем тоже дождь
+            if next_hour_dt == end_time_dt + datetime.timedelta(hours=1) and next_hour.get('pop', 0) > 0.35:
+                end_time_dt = next_hour_dt
             else:
-                # Интервал
-                end_time_display = end + datetime.timedelta(hours=1)
-                formatted_parts.append(f"с {start.strftime('%H:%M')} до {end_time_display.strftime('%H:%M')}")
+                break
 
-        return "Дождь: " + " и ".join(formatted_parts)
+        # 3. Форматируем строку
+        local_start = start_time_dt + datetime.timedelta(seconds=timezone_offset)
+        
+        if start_time_dt == end_time_dt:
+            return f"Дождь в ~{local_start.strftime('%H:%M')}"
+        else:
+            local_end = end_time_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=timezone_offset)
+            return f"Дождь с {local_start.strftime('%H:%M')} до {local_end.strftime('%H:%M')}"
 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза осадков: {e}")
@@ -141,12 +138,14 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         wind_speed, wind_deg = current_weather['wind_speed'], current_weather['wind_deg']
         wind_dir = get_wind_direction_abbr(wind_deg)
 
+        # ИЗМЕНЕНО: Добавлен перенос строки \n перед прогнозом
         text_lines = [
             f"Погода в г. {city_name}\n",
             f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
             f"{desc}", f"Влажность: {humidity}%",
-            f"Ветер: {wind_dir}, {wind_speed:.1f} м/с\n",
-            f"Прогноз: {precipitation_forecast}"
+            f"Ветер: {wind_dir}, {wind_speed:.1f} м/с",
+            f"\nПрогноз:", # <-- Перенос строки
+            f"{precipitation_forecast}"
         ]
         weather_text = "\n".join(text_lines)
         
