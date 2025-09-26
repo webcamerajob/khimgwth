@@ -40,25 +40,21 @@ async def delete_old_messages(bot: Bot, chat_id: str):
         with open(MESSAGE_IDS_FILE, 'r') as f:
             messages_to_delete = yaml.safe_load(f)
         if not messages_to_delete or not isinstance(messages_to_delete, list): return
-        logger.info(f"Найдено {len(messages_to_delete)} сообщений для удаления.")
         for msg_info in messages_to_delete:
             if message_id := msg_info.get('message_id'):
                 try:
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                    logger.info(f"Сообщение {message_id} успешно удалено.")
+                    logger.info(f"Сообщение {message_id} удалено.")
                 except BadRequest as e:
                     if "message to delete not found" in str(e).lower() or "message can't be deleted" in str(e).lower():
-                        logger.warning(f"Не удалось удалить сообщение {message_id} (возможно, уже удалено).")
+                        logger.warning(f"Не удалось удалить {message_id} (уже удалено).")
                     else: raise e
                 await asyncio.sleep(1)
     except Exception as e:
-        logger.error(f"Ошибка при удалении старых сообщений: {e}")
+        logger.error(f"Ошибка при удалении: {e}")
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
-    params = {
-        "lat": coords["lat"], "lon": coords["lon"], "appid": api_key,
-        "units": "metric", "lang": "ru", "exclude": "minutely,alerts"
-    }
+    params = {"lat": coords["lat"], "lon": coords["lon"], "appid": api_key, "units": "metric", "lang": "ru", "exclude": "minutely,alerts"}
     try:
         response = requests.get(OPENWEATHER_API_URL, params=params)
         response.raise_for_status()
@@ -67,56 +63,64 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Полностью переписана логика прогноза осадков для надежности
+# ИЗМЕНЕНО: Функция ищет все интервалы и обрабатывает перенос на след. день
 def format_precipitation_forecast(weather_data: Dict) -> str:
-    """Анализирует почасовой прогноз и ищет ближайший интервал осадков."""
     try:
-        hourly_forecast = weather_data.get('hourly', [])
-        timezone_offset = weather_data.get('timezone_offset', 0)
-        current_timestamp = weather_data.get('current', {}).get('dt')
+        hourly = weather_data.get('hourly', [])
+        offset = weather_data.get('timezone_offset', 0)
+        current_ts = weather_data.get('current', {}).get('dt')
+        if not hourly or not current_ts: return "Осадков не ожидается"
 
-        if not hourly_forecast or not current_timestamp:
-            return "Осадков не ожидается"
+        rainy_hours = []
+        for hour in hourly[:24]:
+            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
+                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
+                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
 
-        first_rain_hour = None
-        
-        # 1. Находим первый будущий час с дождем
-        for hour in hourly_forecast[:24]:
-            if hour.get('dt', 0) > current_timestamp and hour.get('pop', 0) > 0.35:
-                first_rain_hour = hour
-                break
-        
-        if not first_rain_hour:
-            return "Осадков не ожидается"
+        if not rainy_hours: return "Осадков не ожидается"
 
-        # 2. Находим, как долго этот дождь будет продолжаться
-        start_time_dt = datetime.datetime.fromtimestamp(first_rain_hour['dt'], tz=datetime.timezone.utc)
-        end_time_dt = start_time_dt
-        
-        start_index = hourly_forecast.index(first_rain_hour)
-        
-        for i in range(start_index + 1, len(hourly_forecast)):
-            next_hour = hourly_forecast[i]
-            next_hour_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
-            
-            # Если следующий час идет подряд и в нем тоже дождь
-            if next_hour_dt == end_time_dt + datetime.timedelta(hours=1) and next_hour.get('pop', 0) > 0.35:
-                end_time_dt = next_hour_dt
+        intervals, i = [], 0
+        while i < len(rainy_hours):
+            start = rainy_hours[i]
+            end = start
+            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
+                end = rainy_hours[i+1]
+                i += 1
+            intervals.append((start, end))
+            i += 1
+
+        parts = []
+        for start, end in intervals:
+            if start == end:
+                parts.append(f"в ~{start.strftime('%H:%M')}")
             else:
-                break
+                end_display = end + datetime.timedelta(hours=1)
+                day_suffix = " (след. день)" if end_display.day != start.day else ""
+                parts.append(f"с {start.strftime('%H:%M')} до {end_display.strftime('%H:%M')}{day_suffix}")
 
-        # 3. Форматируем строку
-        local_start = start_time_dt + datetime.timedelta(seconds=timezone_offset)
-        
-        if start_time_dt == end_time_dt:
-            return f"Дождь в ~{local_start.strftime('%H:%M')}"
-        else:
-            local_end = end_time_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=timezone_offset)
-            return f"Дождь с {local_start.strftime('%H:%M')} до {local_end.strftime('%H:%M')}"
-
+        return "Дождь " + " и ".join(parts)
     except Exception as e:
-        logger.error(f"Ошибка при форматировании прогноза осадков: {e}")
+        logger.error(f"Ошибка при форматировании прогноза: {e}")
         return "Прогноз осадков недоступен"
+
+# НОВАЯ функция для переноса длинного текста
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+    """Разбивает текст на несколько строк, если он не помещается в ширину."""
+    lines = []
+    words = text.split()
+    if not words:
+        return ""
+        
+    current_line = words[0]
+    for word in words[1:]:
+        if font.getlength(current_line + " " + word) <= max_width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    
+    return "\n".join(lines)
 
 
 def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
@@ -129,42 +133,48 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         h_size = int((float(img.size[1]) * float(w_percent)))
         img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
         
-        current_weather = weather_data['current']
+        current = weather_data['current']
         width, height = img.size
         draw = ImageDraw.Draw(img)
 
-        temp, feels_like = current_weather['temp'], current_weather['feels_like']
-        desc, humidity = current_weather['weather'][0]['description'].capitalize(), current_weather['humidity']
-        wind_speed, wind_deg = current_weather['wind_speed'], current_weather['wind_deg']
-        wind_dir = get_wind_direction_abbr(wind_deg)
-
-        # ИЗМЕНЕНО: Добавлен перенос строки \n перед прогнозом
-        text_lines = [
-            f"Погода в г. {city_name}\n",
-            f"Температура: {temp:.1f}°C (ощущ. {feels_like:.1f}°C)",
-            f"{desc}", f"Влажность: {humidity}%",
-            f"Ветер: {wind_dir}, {wind_speed:.1f} м/с",
-            f"\nПрогноз:", # <-- Перенос строки
-            f"{precipitation_forecast}"
-        ]
-        weather_text = "\n".join(text_lines)
-        
-        plaque_width, padding, border_radius = int(width * 0.9), int(width * 0.04), int(width * 0.03)
+        # ИЗМЕНЕНО: Логика сборки текста для поддержки переносов
+        plaque_width = int(width * 0.9)
+        padding = int(width * 0.04)
         font_size = int(width / 22)
         font = get_font(font_size)
+        
+        main_info_lines = [
+            f"Погода в г. {city_name}\n",
+            f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
+            f"{current['weather'][0]['description'].capitalize()}",
+            f"Влажность: {current['humidity']}%",
+            f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
+        ]
+        
+        # Оборачиваем прогноз, если он слишком длинный
+        wrapped_forecast = wrap_text(precipitation_forecast, font, plaque_width - padding * 2)
+
+        text_lines = main_info_lines + ["\nПрогноз осадков:", wrapped_forecast]
+        weather_text = "\n".join(text_lines)
+        
+        # Расчет высоты плашки
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
-        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        text_h = bbox[3] - bbox[1]
         plaque_h = text_h + 2 * padding
         plaque_x, plaque_y = (width - plaque_width) // 2, (height - plaque_h) // 2
         
+        # Рисование
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
-        round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), border_radius, (0, 0, 0, 160))
+        round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), int(width*0.03), (0, 0, 0, 160))
         img.paste(plaque_img, (0,0), plaque_img)
         
         draw = ImageDraw.Draw(img)
-        text_x, text_y = plaque_x + (plaque_width - text_w) // 2, plaque_y + (plaque_h - text_h) // 2
-        draw.multiline_text((text_x, text_y), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
+        text_bbox_final = draw.textbbox((plaque_x, plaque_y), weather_text, font=font, spacing=10)
+        text_w = text_bbox_final[2] - text_bbox_final[0]
+        text_x = plaque_x + (plaque_width - text_w) // 2
+        draw.multiline_text((text_x, plaque_y + padding), weather_text, fill=(255, 255, 255), font=font, spacing=10, align="center")
+        
         return img
     except Exception as e:
         logger.error(f"Ошибка при создании кадра для {city_name}: {e}")
@@ -184,7 +194,7 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
                 for step in range(1, steps + 1):
                     blended = np.array(add_watermark(Image.blend(current, nxt, alpha=step/steps)))
                     writer.append_data(blended)
-        logger.info(f"Видео MP4 успешно создано: {output_path}")
+        logger.info(f"Видео MP4 создано: {output_path}")
         return output_path
     except Exception as e:
         logger.error(f"Ошибка при создании MP4: {e}")
@@ -192,8 +202,7 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
 
 def save_message_id(message_id: int):
     new_message = [{'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}]
-    with open(MESSAGE_IDS_FILE, 'w') as f:
-        yaml.dump(new_message, f)
+    with open(MESSAGE_IDS_FILE, 'w') as f: yaml.dump(new_message, f)
 
 # --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
@@ -240,14 +249,11 @@ async def main():
     openweather_api_key = os.getenv("OPENWEATHER_API_KEY")
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     target_chat_id = os.getenv("TARGET_CHAT_ID")
-
     if not all([telegram_bot_token, target_chat_id, openweather_api_key]):
         logger.error("ОШИБКА: Отсутствуют переменные окружения.")
         return
-
     bot = Bot(token=telegram_bot_token)
     await delete_old_messages(bot, target_chat_id)
-
     frames = []
     for city_name, coords in CITIES.items():
         logger.info(f"Обработка города: {city_name}...")
@@ -259,14 +265,11 @@ async def main():
         else:
             logger.warning(f"Нет данных для {city_name}.")
         await asyncio.sleep(0.5)
-
     if not frames:
         logger.error("Не удалось создать ни одного кадра.")
         return
-    
     video_path = "weather_report.mp4"
     create_weather_video(frames, video_path)
-    
     if os.path.exists(video_path):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL), InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]])
         try:
@@ -276,17 +279,17 @@ async def main():
                     disable_notification=True, reply_markup=keyboard
                 )
             save_message_id(message.message_id)
-            logger.info(f"Анимация MP4 успешно отправлена. ID: {message.message_id}.")
+            logger.info(f"Анимация MP4 отправлена. ID: {message.message_id}.")
         except Exception as e:
             logger.error(f"Ошибка при отправке MP4: {e}")
         finally:
             if os.path.exists(video_path): os.remove(video_path)
     else:
         logger.error("Файл MP4 не был создан.")
-        
     logger.info("--- Завершение работы ---")
 
 if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
+
