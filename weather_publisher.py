@@ -63,64 +63,73 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Функция ищет все интервалы и обрабатывает перенос на след. день
+# ИЗМЕНЕНО: Финальная версия логики прогноза
 def format_precipitation_forecast(weather_data: Dict) -> str:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
-        if not hourly or not current_ts: return "Осадков не ожидается"
 
-        rainy_hours = []
-        for hour in hourly[:24]:
-            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
-                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
+        if not hourly or not current_ts:
+            return "Прогноз недоступен"
 
-        if not rainy_hours: return "Осадков не ожидается"
+        # Находим прогнозный блок для текущего часа
+        current_hour_forecast = None
+        for hour in hourly:
+            if hour.get('dt', 0) <= current_ts < hour.get('dt', 0) + 3600:
+                current_hour_forecast = hour
+                break
+        
+        is_raining_now = current_hour_forecast and current_hour_forecast.get('pop', 0) > 0.35
 
-        intervals, i = [], 0
-        while i < len(rainy_hours):
-            start = rainy_hours[i]
-            end = start
-            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
-                end = rainy_hours[i+1]
-                i += 1
-            intervals.append((start, end))
-            i += 1
-
-        parts = []
-        for start, end in intervals:
-            if start == end:
-                parts.append(f"в ~{start.strftime('%H:%M')}")
+        # --- Сценарий 1: Дождь уже идет ---
+        if is_raining_now:
+            end_rain_dt = None
+            start_index = hourly.index(current_hour_forecast)
+            
+            # Ищем первый час без дождя
+            for i in range(start_index + 1, len(hourly)):
+                next_hour = hourly[i]
+                if next_hour.get('pop', 0) <= 0.35:
+                    end_rain_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
+                    break
+            
+            if end_rain_dt:
+                local_end_time = end_rain_dt + datetime.timedelta(seconds=offset)
+                return f"Дождь до ~{local_end_time.strftime('%H:%M')}"
             else:
-                end_display = end + datetime.timedelta(hours=1)
-                day_suffix = " (след. день)" if end_display.day != start.day else ""
-                parts.append(f"с {start.strftime('%H:%M')} до {end_display.strftime('%H:%M')}{day_suffix}")
+                return "Ожидается продолжительный дождь"
 
-        return "Дождь " + " и ".join(parts)
+        # --- Сценарий 2: Сейчас сухо, ищем будущий дождь ---
+        else:
+            future_rainy_hours = []
+            for hour in hourly[:24]:
+                if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
+                    dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
+                    future_rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
+
+            if not future_rainy_hours:
+                return "Осадков не ожидается"
+
+            # Группируем в интервалы (берем только первый)
+            start_interval = future_rainy_hours[0]
+            end_interval = start_interval
+            for i in range(1, len(future_rainy_hours)):
+                if future_rainy_hours[i] == end_interval + datetime.timedelta(hours=1):
+                    end_interval = future_rainy_hours[i]
+                else:
+                    break
+            
+            if start_interval == end_interval:
+                return f"Дождь в ~{start_interval.strftime('%H:%M')}"
+            else:
+                end_display = end_interval + datetime.timedelta(hours=1)
+                day_suffix = " (след. день)" if end_display.day != start_interval.day else ""
+                return f"Дождь с {start_interval.strftime('%H:%M')} до {end_display.strftime('%H:%M')}{day_suffix}"
+                
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
-        return "Прогноз осадков недоступен"
-
-# НОВАЯ функция для переноса длинного текста
-def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
-    """Разбивает текст на несколько строк, если он не помещается в ширину."""
-    lines = []
-    words = text.split()
-    if not words:
-        return ""
-        
-    current_line = words[0]
-    for word in words[1:]:
-        if font.getlength(current_line + " " + word) <= max_width:
-            current_line += " " + word
-        else:
-            lines.append(current_line)
-            current_line = word
-    lines.append(current_line)
-    
-    return "\n".join(lines)
+        return "Прогноз недоступен"
 
 
 def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
@@ -136,10 +145,8 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         current = weather_data['current']
         width, height = img.size
         draw = ImageDraw.Draw(img)
-
-        # ИЗМЕНЕНО: Логика сборки текста для поддержки переносов
-        plaque_width = int(width * 0.9)
-        padding = int(width * 0.04)
+        
+        plaque_width, padding, border_radius = int(width * 0.9), int(width * 0.04), int(width * 0.03)
         font_size = int(width / 22)
         font = get_font(font_size)
         
@@ -151,22 +158,18 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
-        # Оборачиваем прогноз, если он слишком длинный
         wrapped_forecast = wrap_text(precipitation_forecast, font, plaque_width - padding * 2)
-
         text_lines = main_info_lines + ["\nПрогноз осадков:", wrapped_forecast]
         weather_text = "\n".join(text_lines)
         
-        # Расчет высоты плашки
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_h = bbox[3] - bbox[1]
         plaque_h = text_h + 2 * padding
         plaque_x, plaque_y = (width - plaque_width) // 2, (height - plaque_h) // 2
         
-        # Рисование
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
-        round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), int(width*0.03), (0, 0, 0, 160))
+        round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), border_radius, (0, 0, 0, 160))
         img.paste(plaque_img, (0,0), plaque_img)
         
         draw = ImageDraw.Draw(img)
@@ -203,6 +206,19 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
 def save_message_id(message_id: int):
     new_message = [{'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}]
     with open(MESSAGE_IDS_FILE, 'w') as f: yaml.dump(new_message, f)
+
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+    lines, words = [], text.split()
+    if not words: return ""
+    current_line = words[0]
+    for word in words[1:]:
+        if font.getlength(current_line + " " + word) <= max_width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    return "\n".join(lines)
 
 # --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
@@ -292,4 +308,3 @@ if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
-
