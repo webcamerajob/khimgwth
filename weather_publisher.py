@@ -63,35 +63,32 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Финальная версия логики прогноза
+# ИЗМЕНЕНО: Финальная, самая надежная версия логики прогноза
 def format_precipitation_forecast(weather_data: Dict) -> str:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
+        if not hourly or not current_ts: return "Прогноз недоступен"
 
-        if not hourly or not current_ts:
-            return "Прогноз недоступен"
-
-        # Находим прогнозный блок для текущего часа
+        # 1. Находим прогнозный блок для текущего часа
         current_hour_forecast = None
-        for hour in hourly:
+        current_hour_index = -1
+        for i, hour in enumerate(hourly):
             if hour.get('dt', 0) <= current_ts < hour.get('dt', 0) + 3600:
                 current_hour_forecast = hour
+                current_hour_index = i
                 break
         
         is_raining_now = current_hour_forecast and current_hour_forecast.get('pop', 0) > 0.35
 
-        # --- Сценарий 1: Дождь уже идет ---
+        # 2. Сценарий A: Дождь уже идет в текущем часовом блоке
         if is_raining_now:
             end_rain_dt = None
-            start_index = hourly.index(current_hour_forecast)
-            
-            # Ищем первый час без дождя
-            for i in range(start_index + 1, len(hourly)):
-                next_hour = hourly[i]
-                if next_hour.get('pop', 0) <= 0.35:
-                    end_rain_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
+            # Ищем первый будущий час, когда дождя не будет
+            for i in range(current_hour_index + 1, len(hourly)):
+                if hourly[i].get('pop', 0) <= 0.35:
+                    end_rain_dt = datetime.datetime.fromtimestamp(hourly[i]['dt'], tz=datetime.timezone.utc)
                     break
             
             if end_rain_dt:
@@ -100,37 +97,56 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
             else:
                 return "Ожидается продолжительный дождь"
 
-        # --- Сценарий 2: Сейчас сухо, ищем будущий дождь ---
+        # 3. Сценарий B: Сейчас сухо, ищем следующий интервал дождя
         else:
-            future_rainy_hours = []
-            for hour in hourly[:24]:
+            first_future_rain_hour = None
+            first_future_rain_index = -1
+            # Ищем первый час, который начнется в будущем
+            for i, hour in enumerate(hourly):
                 if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                    dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
-                    future_rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
-
-            if not future_rainy_hours:
+                    first_future_rain_hour = hour
+                    first_future_rain_index = i
+                    break
+            
+            if not first_future_rain_hour:
                 return "Осадков не ожидается"
 
-            # Группируем в интервалы (берем только первый)
-            start_interval = future_rainy_hours[0]
-            end_interval = start_interval
-            for i in range(1, len(future_rainy_hours)):
-                if future_rainy_hours[i] == end_interval + datetime.timedelta(hours=1):
-                    end_interval = future_rainy_hours[i]
+            # Ищем конец этого интервала
+            start_dt = datetime.datetime.fromtimestamp(first_future_rain_hour['dt'], tz=datetime.timezone.utc)
+            end_dt = start_dt
+            
+            for i in range(first_future_rain_index + 1, len(hourly)):
+                next_hour = hourly[i]
+                next_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
+                if next_dt == end_dt + datetime.timedelta(hours=1) and next_hour.get('pop', 0) > 0.35:
+                    end_dt = next_dt
                 else:
                     break
             
-            if start_interval == end_interval:
-                return f"Дождь в ~{start_interval.strftime('%H:%M')}"
+            local_start = start_dt + datetime.timedelta(seconds=offset)
+            if start_dt == end_dt:
+                return f"Дождь в ~{local_start.strftime('%H:%M')}"
             else:
-                end_display = end_interval + datetime.timedelta(hours=1)
-                day_suffix = " (след. день)" if end_display.day != start_interval.day else ""
-                return f"Дождь с {start_interval.strftime('%H:%M')} до {end_display.strftime('%H:%M')}{day_suffix}"
+                local_end = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+                day_suffix = " (след. день)" if local_end.day != local_start.day else ""
+                return f"Дождь с {local_start.strftime('%H:%M')} до {local_end.strftime('%H:%M')}{day_suffix}"
                 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return "Прогноз недоступен"
 
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+    lines, words = [], text.split()
+    if not words: return ""
+    current_line = words[0]
+    for word in words[1:]:
+        if font.getlength(current_line + " " + word) <= max_width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    return "\n".join(lines)
 
 def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
@@ -206,19 +222,6 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
 def save_message_id(message_id: int):
     new_message = [{'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}]
     with open(MESSAGE_IDS_FILE, 'w') as f: yaml.dump(new_message, f)
-
-def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
-    lines, words = [], text.split()
-    if not words: return ""
-    current_line = words[0]
-    for word in words[1:]:
-        if font.getlength(current_line + " " + word) <= max_width:
-            current_line += " " + word
-        else:
-            lines.append(current_line)
-            current_line = word
-    lines.append(current_line)
-    return "\n".join(lines)
 
 # --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
