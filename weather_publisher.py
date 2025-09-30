@@ -202,8 +202,14 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
 
 def create_weather_video(frames: List[Image.Image], output_path: str = "weather_report.mp4") -> str:
     if not frames: return ""
-    fps, hold_sec, steps = 20, 3, 15
-    hold_frames = fps * hold_sec
+    
+    # --- НАСТРОЙКИ ---
+    fps = 20
+    hold_duration_sec = 5  # <-- ИЗМЕНЕНО: Время показа увеличено до 5 секунд
+    steps = 15
+    # --- КОНЕЦ НАСТРОЕК ---
+    
+    hold_frames = fps * hold_duration_sec
     try:
         params = {'fps': fps, 'codec': 'libx264', 'quality': 8, 'pixelformat': 'yuv420p', 'output_params': ['-an']}
         with imageio.get_writer(output_path, **params) as writer:
