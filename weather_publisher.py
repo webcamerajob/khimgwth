@@ -63,7 +63,7 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Финальная версия логики с раздельным указанием "след. день"
+# ИЗМЕНЕНО: Убрана "умная" логика, которая приводила к ошибке
 def format_precipitation_forecast(weather_data: Dict) -> str:
     try:
         hourly = weather_data.get('hourly', [])
@@ -120,9 +120,6 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
             else:
                 local_end = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
                 end_suffix = " (след. день)" if local_end.day != current_local_dt.day else ""
-                # Если суффиксы одинаковые и непустые, оставляем только у конца для краткости
-                if start_suffix and end_suffix and start_suffix == end_suffix:
-                    start_suffix = ""
                 
                 return f"Дождь: с {local_start.strftime('%H:%M')}{start_suffix} до {local_end.strftime('%H:%M')}{end_suffix}"
                 
@@ -306,3 +303,4 @@ if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
+
