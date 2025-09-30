@@ -71,7 +71,6 @@ def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datet
         return " (завтра)"
     return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
 
-# ИЗМЕНЕНО: Функция теперь определяет интенсивность дождя
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -81,7 +80,6 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
         
         current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        # --- Собираем все будущие дождливые часы с их данными ---
         rainy_hours_data = []
         for hour in hourly[:48]:
             if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
@@ -89,7 +87,6 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
 
         if not rainy_hours_data: return ["Осадков не ожидается"]
 
-        # --- Группируем их в интервалы ---
         intervals, i = [], 0
         while i < len(rainy_hours_data):
             start_hour_data = rainy_hours_data[i]
@@ -101,24 +98,20 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
             intervals.append((start_hour_data, end_hour_data))
             i += 1
         
-        # --- Форматируем до двух интервалов ---
         output_lines = []
         for start_hour, end_hour in intervals[:2]:
             start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
             end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
             
-            # --- Логика определения интенсивности ---
             max_rain_volume = 0
-            intensity_description = "Дождь" # Значение по умолчанию
+            intensity_description = "Дождь"
             
-            # Находим час с максимальным объемом осадков в интервале
             interval_hours = [h for h in hourly if start_hour['dt'] <= h['dt'] <= end_hour['dt']]
             for hour in interval_hours:
                 rain_volume = hour.get('rain', {}).get('1h', 0)
                 if rain_volume > max_rain_volume:
                     max_rain_volume = rain_volume
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
-            # --- Конец логики интенсивности ---
 
             local_start = start_dt + datetime.timedelta(seconds=offset)
             start_suffix = get_day_label(local_start, current_local_dt)
@@ -167,12 +160,14 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         font_size = int(width / 22)
         font = get_font(font_size)
         
+        # ИЗМЕНЕНО: Объединяем описание погоды и влажность
+        weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
+
         main_info_lines = [
             f"Погода в г. {city_name}\n",
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
-            f"{current['weather'][0]['description'].capitalize()}",
-            f"Влажность: {current['humidity']}%",
-            f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
+            weather_description_and_humidity, # Новая объединенная строка
+            f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/s",
         ]
         
         final_forecast_lines = []
@@ -186,7 +181,10 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
         text_h = bbox[3] - bbox[1]
         plaque_h = text_h + 2 * padding
-        plaque_x, plaque_y = (width - plaque_width) // 2, (height - plaque_h) // 2
+        
+        # ИЗМЕНЕНО: Смещаем плашку ниже на 0.05 от высоты изображения
+        plaque_x = (width - plaque_width) // 2
+        plaque_y = int(height * 0.25) # Отступаем сверху на 25% высоты изображения
         
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
@@ -316,4 +314,3 @@ if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
-
