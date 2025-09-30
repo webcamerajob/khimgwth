@@ -63,7 +63,7 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Убрана "умная" логика, которая приводила к ошибке
+# ИЗМЕНЕНО: Финальная, самая надежная версия с раздельным указанием "след. день"
 def format_precipitation_forecast(weather_data: Dict) -> str:
     try:
         hourly = weather_data.get('hourly', [])
@@ -116,7 +116,7 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
             start_suffix = " (след. день)" if local_start.day != current_local_dt.day else ""
 
             if start_dt == end_dt:
-                return f"Дождь в ~{local_start.strftime('%H:%M')}{start_suffix}"
+                return f"Дождь: в ~{local_start.strftime('%H:%M')}{start_suffix}"
             else:
                 local_end = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
                 end_suffix = " (след. день)" if local_end.day != current_local_dt.day else ""
@@ -126,6 +126,7 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return "Прогноз недоступен"
+
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
@@ -303,4 +304,3 @@ if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
-
