@@ -64,12 +64,21 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
+def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datetime) -> str:
+    if date_to_check.day == current_date.day: return ""
+    tomorrow = current_date + datetime.timedelta(days=1)
+    if date_to_check.day == tomorrow.day and date_to_check.month == tomorrow.month:
+        return " (завтра)"
+    return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
+
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
         if not hourly or not current_ts: return ["Осадков не ожидается"]
+        
+        current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
         rainy_hours_data = []
         for hour in hourly[:48]:
@@ -179,11 +188,9 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         plaque_h = text_h + 2 * padding
         
         plaque_x = (width - plaque_width) // 2
-        plaque_y = height - plaque_h - padding
+        # ИЗМЕНЕНО: Возвращаем центрирование по вертикали
+        plaque_y = (height - plaque_h) // 2
         
-        if plaque_y < padding:
-            plaque_y = padding
-
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
         round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), border_radius, (0, 0, 0, 160))
