@@ -31,6 +31,7 @@ NEWS_BUTTON_TEXT = "Попробуй! 🆕"
 NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 BACKGROUNDS_FOLDER = "backgrounds2"
 MESSAGE_IDS_FILE = "message_ids.yml"
+DAY_ABBREVIATIONS = {0: 'пн', 1: 'вт', 2: 'ср', 3: 'чт', 4: 'пт', 5: 'сб', 6: 'вс'}
 
 # --- Функции ---
 
@@ -63,6 +64,16 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
+# НОВАЯ вспомогательная функция для получения метки дня
+def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datetime) -> str:
+    if date_to_check.day == current_date.day:
+        return ""
+    tomorrow = current_date + datetime.timedelta(days=1)
+    if date_to_check.day == tomorrow.day and date_to_check.month == tomorrow.month:
+        return " (завтра)"
+    return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
+
+# ИЗМЕНЕНО: Финальная логика с абсолютными днями недели
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -82,25 +93,22 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
 
         intervals, i = [], 0
         while i < len(rainy_hours):
-            start = rainy_hours[i]
-            end = start
+            start, end = rainy_hours[i], rainy_hours[i]
             while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
                 end = rainy_hours[i+1]
                 i += 1
             intervals.append((start, end))
             i += 1
         
-        intervals_to_show = intervals[:2]
-        
         output_lines = []
-        for start, end in intervals_to_show:
-            start_suffix = " (след. день)" if start.day != current_local_dt.day else ""
+        for start, end in intervals[:2]: # Берем не более двух интервалов
+            start_suffix = get_day_label(start, current_local_dt)
             
             if start == end:
                 output_lines.append(f"Дождь в ~{start.strftime('%H:%M')}{start_suffix}")
             else:
                 end_display = end + datetime.timedelta(hours=1)
-                end_suffix = " (след. день)" if end_display.day != current_local_dt.day else ""
+                end_suffix = get_day_label(end_display, current_local_dt)
                 
                 output_lines.append(f"Дождь с {start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
         
@@ -110,7 +118,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
 
-# ИЗМЕНЕНО: Возвращаем функцию переноса текста
+
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
     if not words: return ""
@@ -150,7 +158,6 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
-        # ИЗМЕНЕНО: Каждая строка прогноза теперь оборачивается отдельно
         final_forecast_lines = []
         for line in precipitation_forecast_lines:
             wrapped_line = wrap_text(line, font, plaque_width - padding * 2)
@@ -292,3 +299,4 @@ if __name__ == "__main__":
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
+
