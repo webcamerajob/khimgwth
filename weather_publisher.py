@@ -80,54 +80,53 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
         
         current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        rainy_hours_data = []
+        rainy_hours = []
         for hour in hourly[:48]:
             if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                rainy_hours_data.append(hour)
+                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
+                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
 
-        if not rainy_hours_data: return ["Осадков не ожидается"]
+        if not rainy_hours: return ["Осадков не ожидается"]
 
         intervals, i = [], 0
-        while i < len(rainy_hours_data):
-            start_hour_data = rainy_hours_data[i]
-            end_hour_data = start_hour_data
-            
-            while i + 1 < len(rainy_hours_data) and rainy_hours_data[i+1]['dt'] == end_hour_data['dt'] + 3600:
-                end_hour_data = rainy_hours_data[i+1]
+        while i < len(rainy_hours):
+            start, end = rainy_hours[i], rainy_hours[i]
+            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
+                end = rainy_hours[i+1]
                 i += 1
-            intervals.append((start_hour_data, end_hour_data))
+            intervals.append((start, end))
             i += 1
         
         output_lines = []
-        for start_hour, end_hour in intervals[:2]:
-            start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
-            end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
-            
+        for start, end in intervals[:2]:
+            start_dt_utc = start - datetime.timedelta(seconds=offset)
+            end_dt_utc = end - datetime.timedelta(seconds=offset)
+
             max_rain_volume = 0
             intensity_description = "Дождь"
             
-            interval_hours = [h for h in hourly if start_hour['dt'] <= h['dt'] <= end_hour['dt']]
+            interval_hours = [h for h in hourly if start_dt_utc.timestamp() <= h['dt'] <= end_dt_utc.timestamp()]
             for hour in interval_hours:
                 rain_volume = hour.get('rain', {}).get('1h', 0)
                 if rain_volume > max_rain_volume:
                     max_rain_volume = rain_volume
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
-            local_start = start_dt + datetime.timedelta(seconds=offset)
-            start_suffix = get_day_label(local_start, current_local_dt)
+            start_suffix = get_day_label(start, current_local_dt)
             
-            if start_dt == end_dt:
-                output_lines.append(f"{intensity_description} в ~{local_start.strftime('%H:%M')}{start_suffix}")
+            if start == end:
+                output_lines.append(f"{intensity_description} в ~{start.strftime('%H:%M')}{start_suffix}")
             else:
-                end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+                end_display = end + datetime.timedelta(hours=1)
                 end_suffix = get_day_label(end_display, current_local_dt)
-                output_lines.append(f"{intensity_description} с {local_start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
+                output_lines.append(f"{intensity_description} с {start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
         
         return output_lines
 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
+
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
@@ -160,14 +159,11 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         font_size = int(width / 22)
         font = get_font(font_size)
         
-        # ИЗМЕНЕНО: Объединяем описание погоды и влажность
-        weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
-
         main_info_lines = [
             f"Погода в г. {city_name}\n",
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
-            weather_description_and_humidity, # Новая объединенная строка
-            f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/s",
+            f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%",
+            f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
         final_forecast_lines = []
@@ -182,10 +178,14 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         text_h = bbox[3] - bbox[1]
         plaque_h = text_h + 2 * padding
         
-        # ИЗМЕНЕНО: Смещаем плашку ниже на 0.05 от высоты изображения
         plaque_x = (width - plaque_width) // 2
-        plaque_y = int(height * 0.25) # Отступаем сверху на 25% высоты изображения
+        # ИЗМЕНЕНО: Плашка больше не центрируется, а прижимается к низу
+        plaque_y = height - plaque_h - padding # Отступ от нижнего края
         
+        # Защита, чтобы плашка не ушла наверх, если станет слишком высокой
+        if plaque_y < padding:
+            plaque_y = padding
+
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
         plaque_draw = ImageDraw.Draw(plaque_img)
         round_rectangle(plaque_draw, (plaque_x, plaque_y, plaque_x + plaque_width, plaque_y + plaque_h), border_radius, (0, 0, 0, 160))
