@@ -32,6 +32,8 @@ NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 BACKGROUNDS_FOLDER = "backgrounds2"
 MESSAGE_IDS_FILE = "message_ids.yml"
 DAY_ABBREVIATIONS = {0: 'пн', 1: 'вт', 2: 'ср', 3: 'чт', 4: 'пт', 5: 'сб', 6: 'вс'}
+# НОВЫЙ СЛОВАРЬ: Дни недели в винительном падеже для заголовка "Погода на (что?)"
+DAYS_OF_WEEK_ACCUSATIVE = {0: 'понедельник', 1: 'вторник', 2: 'среду', 3: 'четверг', 4: 'пятницу', 5: 'субботу', 6: 'воскресенье'}
 
 # --- Функции ---
 
@@ -89,9 +91,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
 
         intervals, i = [], 0
         while i < len(rainy_hours_data):
-            start_hour_data = rainy_hours_data[i]
-            end_hour_data = start_hour_data
-            
+            start_hour_data, end_hour_data = rainy_hours_data[i], rainy_hours_data[i]
             while i + 1 < len(rainy_hours_data) and rainy_hours_data[i+1]['dt'] == end_hour_data['dt'] + 3600:
                 end_hour_data = rainy_hours_data[i+1]
                 i += 1
@@ -103,9 +103,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
             start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
             end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
             
-            max_rain_volume = 0
-            intensity_description = "Дождь"
-            
+            max_rain_volume, intensity_description = 0, "Дождь"
             interval_hours = [h for h in hourly if start_hour['dt'] <= h['dt'] <= end_hour['dt']]
             for hour in interval_hours:
                 rain_volume = hour.get('rain', {}).get('1h', 0)
@@ -114,26 +112,20 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
             local_start = start_dt + datetime.timedelta(seconds=offset)
-            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
-
-            start_day_abbr = DAY_ABBREVIATIONS[local_start.weekday()]
-            end_day_abbr = DAY_ABBREVIATIONS[local_end_display.weekday()]
-
-            if local_start.day == local_end_display.day or local_end_display.strftime('%H:%M') == '00:00':
-                 if local_end_display.strftime('%H:%M') == '00:00':
-                     end_time_str = "24:00"
-                 else:
-                     end_time_str = local_end_display.strftime('%H:%M')
-                 output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_time_str} ({intensity_description})")
+            start_suffix = get_day_label(local_start, current_local_dt)
+            
+            if start_dt == end_dt:
+                output_lines.append(f"{intensity_description} в ~{local_start.strftime('%H:%M')}{start_suffix}")
             else:
-                output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_day_abbr}, {local_end_display.strftime('%H:%M')} ({intensity_description})")
+                end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+                end_suffix = get_day_label(end_display, current_local_dt)
+                output_lines.append(f"{intensity_description} с {local_start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
         
         return output_lines
 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
-
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
@@ -166,10 +158,16 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         font_size = int(width / 22)
         font = get_font(font_size)
         
+        # ИЗМЕНЕНО: Формируем новый заголовок
+        offset = weather_data.get('timezone_offset', 0)
+        local_dt = datetime.datetime.fromtimestamp(current['dt'], tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
+        day_of_week_str = DAYS_OF_WEEK_ACCUSATIVE.get(local_dt.weekday(), '')
+        new_title = f"Погода на {day_of_week_str} в г. {city_name}\n"
+        
         weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
 
         main_info_lines = [
-            f"Погода в г. {city_name}\n",
+            new_title,
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
             weather_description_and_humidity,
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
@@ -188,7 +186,6 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         plaque_h = text_h + 2 * padding
         
         plaque_x = (width - plaque_width) // 2
-        # ИЗМЕНЕНО: Возвращаем центрирование по вертикали
         plaque_y = (height - plaque_h) // 2
         
         plaque_img = Image.new('RGBA', img.size, (0,0,0,0))
