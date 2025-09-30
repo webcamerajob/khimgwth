@@ -64,16 +64,14 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# НОВАЯ вспомогательная функция для получения метки дня
 def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datetime) -> str:
-    if date_to_check.day == current_date.day:
-        return ""
+    if date_to_check.day == current_date.day: return ""
     tomorrow = current_date + datetime.timedelta(days=1)
     if date_to_check.day == tomorrow.day and date_to_check.month == tomorrow.month:
         return " (завтра)"
     return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
 
-# ИЗМЕНЕНО: Финальная логика с абсолютными днями недели
+# ИЗМЕНЕНО: Функция теперь определяет интенсивность дождя
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -83,41 +81,60 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
         
         current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        rainy_hours = []
+        # --- Собираем все будущие дождливые часы с их данными ---
+        rainy_hours_data = []
         for hour in hourly[:48]:
             if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
-                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
+                rainy_hours_data.append(hour)
 
-        if not rainy_hours: return ["Осадков не ожидается"]
+        if not rainy_hours_data: return ["Осадков не ожидается"]
 
+        # --- Группируем их в интервалы ---
         intervals, i = [], 0
-        while i < len(rainy_hours):
-            start, end = rainy_hours[i], rainy_hours[i]
-            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
-                end = rainy_hours[i+1]
+        while i < len(rainy_hours_data):
+            start_hour_data = rainy_hours_data[i]
+            end_hour_data = start_hour_data
+            
+            while i + 1 < len(rainy_hours_data) and rainy_hours_data[i+1]['dt'] == end_hour_data['dt'] + 3600:
+                end_hour_data = rainy_hours_data[i+1]
                 i += 1
-            intervals.append((start, end))
+            intervals.append((start_hour_data, end_hour_data))
             i += 1
         
+        # --- Форматируем до двух интервалов ---
         output_lines = []
-        for start, end in intervals[:2]: # Берем не более двух интервалов
-            start_suffix = get_day_label(start, current_local_dt)
+        for start_hour, end_hour in intervals[:2]:
+            start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
+            end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
             
-            if start == end:
-                output_lines.append(f"Дождь в ~{start.strftime('%H:%M')}{start_suffix}")
+            # --- Логика определения интенсивности ---
+            max_rain_volume = 0
+            intensity_description = "Дождь" # Значение по умолчанию
+            
+            # Находим час с максимальным объемом осадков в интервале
+            interval_hours = [h for h in hourly if start_hour['dt'] <= h['dt'] <= end_hour['dt']]
+            for hour in interval_hours:
+                rain_volume = hour.get('rain', {}).get('1h', 0)
+                if rain_volume > max_rain_volume:
+                    max_rain_volume = rain_volume
+                    intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
+            # --- Конец логики интенсивности ---
+
+            local_start = start_dt + datetime.timedelta(seconds=offset)
+            start_suffix = get_day_label(local_start, current_local_dt)
+            
+            if start_dt == end_dt:
+                output_lines.append(f"{intensity_description} в ~{local_start.strftime('%H:%M')}{start_suffix}")
             else:
-                end_display = end + datetime.timedelta(hours=1)
+                end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
                 end_suffix = get_day_label(end_display, current_local_dt)
-                
-                output_lines.append(f"Дождь с {start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
+                output_lines.append(f"{intensity_description} с {local_start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
         
         return output_lines
 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
-
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
