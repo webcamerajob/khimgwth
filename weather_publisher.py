@@ -64,62 +64,60 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datetime) -> str:
-    if date_to_check.day == current_date.day: return ""
-    tomorrow = current_date + datetime.timedelta(days=1)
-    if date_to_check.day == tomorrow.day and date_to_check.month == tomorrow.month:
-        return " (завтра)"
-    return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
-
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
         if not hourly or not current_ts: return ["Осадков не ожидается"]
-        
-        current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        rainy_hours = []
+        rainy_hours_data = []
         for hour in hourly[:48]:
             if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
-                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
+                rainy_hours_data.append(hour)
 
-        if not rainy_hours: return ["Осадков не ожидается"]
+        if not rainy_hours_data: return ["Осадков не ожидается"]
 
         intervals, i = [], 0
-        while i < len(rainy_hours):
-            start, end = rainy_hours[i], rainy_hours[i]
-            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
-                end = rainy_hours[i+1]
+        while i < len(rainy_hours_data):
+            start_hour_data = rainy_hours_data[i]
+            end_hour_data = start_hour_data
+            
+            while i + 1 < len(rainy_hours_data) and rainy_hours_data[i+1]['dt'] == end_hour_data['dt'] + 3600:
+                end_hour_data = rainy_hours_data[i+1]
                 i += 1
-            intervals.append((start, end))
+            intervals.append((start_hour_data, end_hour_data))
             i += 1
         
         output_lines = []
-        for start, end in intervals[:2]:
-            start_dt_utc = start - datetime.timedelta(seconds=offset)
-            end_dt_utc = end - datetime.timedelta(seconds=offset)
-
+        for start_hour, end_hour in intervals[:2]:
+            start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
+            end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
+            
             max_rain_volume = 0
             intensity_description = "Дождь"
             
-            interval_hours = [h for h in hourly if start_dt_utc.timestamp() <= h['dt'] <= end_dt_utc.timestamp()]
+            interval_hours = [h for h in hourly if start_hour['dt'] <= h['dt'] <= end_hour['dt']]
             for hour in interval_hours:
                 rain_volume = hour.get('rain', {}).get('1h', 0)
                 if rain_volume > max_rain_volume:
                     max_rain_volume = rain_volume
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
-            start_suffix = get_day_label(start, current_local_dt)
-            
-            if start == end:
-                output_lines.append(f"{intensity_description} в ~{start.strftime('%H:%M')}{start_suffix}")
+            local_start = start_dt + datetime.timedelta(seconds=offset)
+            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+
+            start_day_abbr = DAY_ABBREVIATIONS[local_start.weekday()]
+            end_day_abbr = DAY_ABBREVIATIONS[local_end_display.weekday()]
+
+            if local_start.day == local_end_display.day or local_end_display.strftime('%H:%M') == '00:00':
+                 if local_end_display.strftime('%H:%M') == '00:00':
+                     end_time_str = "24:00"
+                 else:
+                     end_time_str = local_end_display.strftime('%H:%M')
+                 output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_time_str} ({intensity_description})")
             else:
-                end_display = end + datetime.timedelta(hours=1)
-                end_suffix = get_day_label(end_display, current_local_dt)
-                output_lines.append(f"{intensity_description} с {start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
+                output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_day_abbr}, {local_end_display.strftime('%H:%M')} ({intensity_description})")
         
         return output_lines
 
@@ -159,10 +157,12 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         font_size = int(width / 22)
         font = get_font(font_size)
         
+        weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
+
         main_info_lines = [
             f"Погода в г. {city_name}\n",
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
-            f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%",
+            weather_description_and_humidity,
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
@@ -179,10 +179,8 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         plaque_h = text_h + 2 * padding
         
         plaque_x = (width - plaque_width) // 2
-        # ИЗМЕНЕНО: Плашка больше не центрируется, а прижимается к низу
-        plaque_y = height - plaque_h - padding # Отступ от нижнего края
+        plaque_y = height - plaque_h - padding
         
-        # Защита, чтобы плашка не ушла наверх, если станет слишком высокой
         if plaque_y < padding:
             plaque_y = padding
 
