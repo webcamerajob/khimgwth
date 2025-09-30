@@ -32,7 +32,6 @@ NEWS_BUTTON_URL = "https://bot.cambodiabank.ru"
 BACKGROUNDS_FOLDER = "backgrounds2"
 MESSAGE_IDS_FILE = "message_ids.yml"
 DAY_ABBREVIATIONS = {0: 'пн', 1: 'вт', 2: 'ср', 3: 'чт', 4: 'пт', 5: 'сб', 6: 'вс'}
-# НОВЫЙ СЛОВАРЬ: Дни недели в винительном падеже для заголовка "Погода на (что?)"
 DAYS_OF_WEEK_ACCUSATIVE = {0: 'понедельник', 1: 'вторник', 2: 'среду', 3: 'четверг', 4: 'пятницу', 5: 'субботу', 6: 'воскресенье'}
 
 # --- Функции ---
@@ -66,21 +65,13 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-def get_day_label(date_to_check: datetime.datetime, current_date: datetime.datetime) -> str:
-    if date_to_check.day == current_date.day: return ""
-    tomorrow = current_date + datetime.timedelta(days=1)
-    if date_to_check.day == tomorrow.day and date_to_check.month == tomorrow.month:
-        return " (завтра)"
-    return f" ({DAY_ABBREVIATIONS.get(date_to_check.weekday(), '')})"
-
+# ИЗМЕНЕНО: Возвращена лучшая версия прогноза с днями недели
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
         if not hourly or not current_ts: return ["Осадков не ожидается"]
-        
-        current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
         rainy_hours_data = []
         for hour in hourly[:48]:
@@ -112,20 +103,26 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
             local_start = start_dt + datetime.timedelta(seconds=offset)
-            start_suffix = get_day_label(local_start, current_local_dt)
-            
-            if start_dt == end_dt:
-                output_lines.append(f"{intensity_description} в ~{local_start.strftime('%H:%M')}{start_suffix}")
+            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+
+            start_day_abbr = DAY_ABBREVIATIONS[local_start.weekday()]
+            end_day_abbr = DAY_ABBREVIATIONS[local_end_display.weekday()]
+
+            if local_start.day == local_end_display.day or local_end_display.strftime('%H:%M') == '00:00':
+                 if local_end_display.strftime('%H:%M') == '00:00':
+                     end_time_str = "24:00"
+                 else:
+                     end_time_str = local_end_display.strftime('%H:%M')
+                 output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_time_str} ({intensity_description})")
             else:
-                end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
-                end_suffix = get_day_label(end_display, current_local_dt)
-                output_lines.append(f"{intensity_description} с {local_start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
+                output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_day_abbr}, {local_end_display.strftime('%H:%M')} ({intensity_description})")
         
         return output_lines
 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
+
 
 def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines, words = [], text.split()
@@ -158,7 +155,6 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         font_size = int(width / 22)
         font = get_font(font_size)
         
-        # ИЗМЕНЕНО: Формируем новый заголовок
         offset = weather_data.get('timezone_offset', 0)
         local_dt = datetime.datetime.fromtimestamp(current['dt'], tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
         day_of_week_str = DAYS_OF_WEEK_ACCUSATIVE.get(local_dt.weekday(), '')
