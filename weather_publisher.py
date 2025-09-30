@@ -63,85 +63,56 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Финальная, самая надежная версия с раздельным указанием "след. день"
-def format_precipitation_forecast(weather_data: Dict) -> str:
+# ИЗМЕНЕНО: Убрана ошибочная логика, теперь "след. день" всегда показывается где нужно
+def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
-        if not hourly or not current_ts: return "Прогноз недоступен"
+        if not hourly or not current_ts: return ["Осадков не ожидается"]
         
         current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        current_hour_forecast, current_hour_index = None, -1
-        for i, hour in enumerate(hourly):
-            if hour.get('dt', 0) <= current_ts < hour.get('dt', 0) + 3600:
-                current_hour_forecast, current_hour_index = hour, i
-                break
+        rainy_hours = []
+        for hour in hourly[:48]:
+            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
+                dt_obj = datetime.datetime.fromtimestamp(hour['dt'], tz=datetime.timezone.utc)
+                rainy_hours.append(dt_obj + datetime.timedelta(seconds=offset))
+
+        if not rainy_hours: return ["Осадков не ожидается"]
+
+        intervals, i = [], 0
+        while i < len(rainy_hours):
+            start = rainy_hours[i]
+            end = start
+            while i + 1 < len(rainy_hours) and rainy_hours[i+1] == end + datetime.timedelta(hours=1):
+                end = rainy_hours[i+1]
+                i += 1
+            intervals.append((start, end))
+            i += 1
         
-        is_raining_now = current_hour_forecast and current_hour_forecast.get('pop', 0) > 0.35
-
-        if is_raining_now:
-            end_rain_dt = None
-            for i in range(current_hour_index + 1, len(hourly)):
-                if hourly[i].get('pop', 0) <= 0.35:
-                    end_rain_dt = datetime.datetime.fromtimestamp(hourly[i]['dt'], tz=datetime.timezone.utc)
-                    break
+        intervals_to_show = intervals[:2]
+        
+        output_lines = []
+        for start, end in intervals_to_show:
+            start_suffix = " (след. день)" if start.day != current_local_dt.day else ""
             
-            if end_rain_dt:
-                local_end_time = end_rain_dt + datetime.timedelta(seconds=offset)
-                day_suffix = " (след. день)" if local_end_time.day != current_local_dt.day else ""
-                return f"Дождь до ~{local_end_time.strftime('%H:%M')}{day_suffix}"
+            if start == end:
+                output_lines.append(f"Дождь в ~{start.strftime('%H:%M')}{start_suffix}")
             else:
-                return "Ожидается продолжительный дождь"
-        else:
-            first_future_rain_hour, first_future_rain_index = None, -1
-            for i, hour in enumerate(hourly):
-                if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                    first_future_rain_hour, first_future_rain_index = hour, i
-                    break
-            
-            if not first_future_rain_hour: return "Осадков не ожидается"
-
-            start_dt = datetime.datetime.fromtimestamp(first_future_rain_hour['dt'], tz=datetime.timezone.utc)
-            end_dt = start_dt
-            
-            for i in range(first_future_rain_index + 1, len(hourly)):
-                next_hour, next_dt = hourly[i], datetime.datetime.fromtimestamp(hourly[i]['dt'], tz=datetime.timezone.utc)
-                if next_dt == end_dt + datetime.timedelta(hours=1) and next_hour.get('pop', 0) > 0.35:
-                    end_dt = next_dt
-                else: break
-            
-            local_start = start_dt + datetime.timedelta(seconds=offset)
-            start_suffix = " (след. день)" if local_start.day != current_local_dt.day else ""
-
-            if start_dt == end_dt:
-                return f"Дождь: в ~{local_start.strftime('%H:%M')}{start_suffix}"
-            else:
-                local_end = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
-                end_suffix = " (след. день)" if local_end.day != current_local_dt.day else ""
+                end_display = end + datetime.timedelta(hours=1)
+                end_suffix = " (след. день)" if end_display.day != current_local_dt.day else ""
                 
-                return f"Дождь: с {local_start.strftime('%H:%M')}{start_suffix} до {local_end.strftime('%H:%M')}{end_suffix}"
-                
+                output_lines.append(f"Дождь с {start.strftime('%H:%M')}{start_suffix} до {end_display.strftime('%H:%M')}{end_suffix}")
+        
+        return output_lines
+
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
-        return "Прогноз недоступен"
+        return ["Прогноз недоступен"]
 
 
-def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
-    lines, words = [], text.split()
-    if not words: return ""
-    current_line = words[0]
-    for word in words[1:]:
-        if font.getlength(current_line + " " + word) <= max_width:
-            current_line += " " + word
-        else:
-            lines.append(current_line)
-            current_line = word
-    lines.append(current_line)
-    return "\n".join(lines)
-
-def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast: str) -> Optional[Image.Image]:
+def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str]) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -167,8 +138,7 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
-        wrapped_forecast = wrap_text(precipitation_forecast, font, plaque_width - padding * 2)
-        text_lines = main_info_lines + ["\nПрогноз осадков:", wrapped_forecast]
+        text_lines = main_info_lines + ["\nПрогноз осадков:"] + precipitation_forecast_lines
         weather_text = "\n".join(text_lines)
         
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
@@ -271,8 +241,8 @@ async def main():
         logger.info(f"Обработка города: {city_name}...")
         weather_data = await get_current_weather(coords, openweather_api_key)
         if weather_data:
-            precipitation_forecast = format_precipitation_forecast(weather_data)
-            frame = create_weather_frame(city_name, weather_data, precipitation_forecast)
+            precipitation_forecast_lines = format_precipitation_forecast(weather_data)
+            frame = create_weather_frame(city_name, weather_data, precipitation_forecast_lines)
             if frame: frames.append(frame)
         else:
             logger.warning(f"Нет данных для {city_name}.")
