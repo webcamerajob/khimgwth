@@ -63,29 +63,26 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Финальная, самая надежная версия логики прогноза
+# ИЗМЕНЕНО: Финальная версия логики с раздельным указанием "след. день"
 def format_precipitation_forecast(weather_data: Dict) -> str:
     try:
         hourly = weather_data.get('hourly', [])
         offset = weather_data.get('timezone_offset', 0)
         current_ts = weather_data.get('current', {}).get('dt')
         if not hourly or not current_ts: return "Прогноз недоступен"
+        
+        current_local_dt = datetime.datetime.fromtimestamp(current_ts, tz=datetime.timezone.utc) + datetime.timedelta(seconds=offset)
 
-        # 1. Находим прогнозный блок для текущего часа
-        current_hour_forecast = None
-        current_hour_index = -1
+        current_hour_forecast, current_hour_index = None, -1
         for i, hour in enumerate(hourly):
             if hour.get('dt', 0) <= current_ts < hour.get('dt', 0) + 3600:
-                current_hour_forecast = hour
-                current_hour_index = i
+                current_hour_forecast, current_hour_index = hour, i
                 break
         
         is_raining_now = current_hour_forecast and current_hour_forecast.get('pop', 0) > 0.35
 
-        # 2. Сценарий A: Дождь уже идет в текущем часовом блоке
         if is_raining_now:
             end_rain_dt = None
-            # Ищем первый будущий час, когда дождя не будет
             for i in range(current_hour_index + 1, len(hourly)):
                 if hourly[i].get('pop', 0) <= 0.35:
                     end_rain_dt = datetime.datetime.fromtimestamp(hourly[i]['dt'], tz=datetime.timezone.utc)
@@ -93,43 +90,41 @@ def format_precipitation_forecast(weather_data: Dict) -> str:
             
             if end_rain_dt:
                 local_end_time = end_rain_dt + datetime.timedelta(seconds=offset)
-                return f"Дождь до ~{local_end_time.strftime('%H:%M')}"
+                day_suffix = " (след. день)" if local_end_time.day != current_local_dt.day else ""
+                return f"Дождь до ~{local_end_time.strftime('%H:%M')}{day_suffix}"
             else:
                 return "Ожидается продолжительный дождь"
-
-        # 3. Сценарий B: Сейчас сухо, ищем следующий интервал дождя
         else:
-            first_future_rain_hour = None
-            first_future_rain_index = -1
-            # Ищем первый час, который начнется в будущем
+            first_future_rain_hour, first_future_rain_index = None, -1
             for i, hour in enumerate(hourly):
                 if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
-                    first_future_rain_hour = hour
-                    first_future_rain_index = i
+                    first_future_rain_hour, first_future_rain_index = hour, i
                     break
             
-            if not first_future_rain_hour:
-                return "Осадков не ожидается"
+            if not first_future_rain_hour: return "Осадков не ожидается"
 
-            # Ищем конец этого интервала
             start_dt = datetime.datetime.fromtimestamp(first_future_rain_hour['dt'], tz=datetime.timezone.utc)
             end_dt = start_dt
             
             for i in range(first_future_rain_index + 1, len(hourly)):
-                next_hour = hourly[i]
-                next_dt = datetime.datetime.fromtimestamp(next_hour['dt'], tz=datetime.timezone.utc)
+                next_hour, next_dt = hourly[i], datetime.datetime.fromtimestamp(hourly[i]['dt'], tz=datetime.timezone.utc)
                 if next_dt == end_dt + datetime.timedelta(hours=1) and next_hour.get('pop', 0) > 0.35:
                     end_dt = next_dt
-                else:
-                    break
+                else: break
             
             local_start = start_dt + datetime.timedelta(seconds=offset)
+            start_suffix = " (след. день)" if local_start.day != current_local_dt.day else ""
+
             if start_dt == end_dt:
-                return f"Дождь в ~{local_start.strftime('%H:%M')}"
+                return f"Дождь в ~{local_start.strftime('%H:%M')}{start_suffix}"
             else:
                 local_end = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
-                day_suffix = " (след. день)" if local_end.day != local_start.day else ""
-                return f"Дождь с {local_start.strftime('%H:%M')} до {local_end.strftime('%H:%M')}{day_suffix}"
+                end_suffix = " (след. день)" if local_end.day != current_local_dt.day else ""
+                # Если суффиксы одинаковые и непустые, оставляем только у конца для краткости
+                if start_suffix and end_suffix and start_suffix == end_suffix:
+                    start_suffix = ""
+                
+                return f"Дождь: с {local_start.strftime('%H:%M')}{start_suffix} до {local_end.strftime('%H:%M')}{end_suffix}"
                 
     except Exception as e:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
