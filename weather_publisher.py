@@ -63,7 +63,6 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Убрана ошибочная логика, теперь "след. день" всегда показывается где нужно
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -111,6 +110,19 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
         logger.error(f"Ошибка при форматировании прогноза: {e}")
         return ["Прогноз недоступен"]
 
+# ИЗМЕНЕНО: Возвращаем функцию переноса текста
+def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+    lines, words = [], text.split()
+    if not words: return ""
+    current_line = words[0]
+    for word in words[1:]:
+        if font.getlength(current_line + " " + word) <= max_width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    return "\n".join(lines)
 
 def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str]) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
@@ -138,7 +150,13 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
-        text_lines = main_info_lines + ["\nПрогноз осадков:"] + precipitation_forecast_lines
+        # ИЗМЕНЕНО: Каждая строка прогноза теперь оборачивается отдельно
+        final_forecast_lines = []
+        for line in precipitation_forecast_lines:
+            wrapped_line = wrap_text(line, font, plaque_width - padding * 2)
+            final_forecast_lines.append(wrapped_line)
+
+        text_lines = main_info_lines + ["\nПрогноз осадков:"] + final_forecast_lines
         weather_text = "\n".join(text_lines)
         
         bbox = draw.textbbox((0, 0), weather_text, font=font, spacing=10)
