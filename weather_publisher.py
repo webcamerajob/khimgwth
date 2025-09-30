@@ -205,13 +205,25 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
     
     # --- НАСТРОЙКИ ---
     fps = 20
-    hold_duration_sec = 5  # <-- ИЗМЕНЕНО: Время показа увеличено до 5 секунд
+    hold_duration_sec = 5
     steps = 15
     # --- КОНЕЦ НАСТРОЕК ---
     
     hold_frames = fps * hold_duration_sec
     try:
-        params = {'fps': fps, 'codec': 'libx264', 'quality': 8, 'pixelformat': 'yuv420p', 'output_params': ['-an']}
+        # ИЗМЕНЕНО: Добавлены параметры для лучшего сжатия
+        params = {
+            'fps': fps,
+            'codec': 'libx264',
+            'quality': 8,
+            'pixelformat': 'yuv420p',
+            'output_params': [
+                '-an',                # Убрать звук
+                '-preset', 'slow',    # Использовать медленный пресет для лучшего сжатия
+                '-tune', 'animation'  # Оптимизировать для анимации
+            ]
+        }
+        
         with imageio.get_writer(output_path, **params) as writer:
             for i in range(len(frames)):
                 current, nxt = frames[i], frames[(i + 1) % len(frames)]
@@ -220,7 +232,7 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
                 for step in range(1, steps + 1):
                     blended = np.array(add_watermark(Image.blend(current, nxt, alpha=step/steps)))
                     writer.append_data(blended)
-        logger.info(f"Видео MP4 создано: {output_path}")
+        logger.info(f"Видео MP4 создано и оптимизировано: {output_path}")
         return output_path
     except Exception as e:
         logger.error(f"Ошибка при создании MP4: {e}")
