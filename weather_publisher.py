@@ -37,23 +37,83 @@ DAYS_OF_WEEK_ACCUSATIVE = {0: 'понедельник', 1: 'вторник', 2: 
 # --- Функции ---
 
 async def delete_old_messages(bot: Bot, chat_id: str):
-    if not os.path.exists(MESSAGE_IDS_FILE): return
+    if not os.path.exists(MESSAGE_IDS_FILE) or os.path.getsize(MESSAGE_IDS_FILE) == 0:
+        logger.info(f"Файл {MESSAGE_IDS_FILE} не найден или пуст, пропускаем удаление старых сообщений.")
+        return
+
+    messages_to_process = []
     try:
         with open(MESSAGE_IDS_FILE, 'r') as f:
-            messages_to_delete = yaml.safe_load(f)
-        if not messages_to_delete or not isinstance(messages_to_delete, list): return
-        for msg_info in messages_to_delete:
-            if message_id := msg_info.get('message_id'):
+            loaded_data = yaml.safe_load(f)
+            if isinstance(loaded_data, list):
+                messages_to_process = loaded_data
+            else:
+                logger.warning(f"Файл {MESSAGE_IDS_FILE} содержит некорректные данные (не список), очищаем его.")
+                with open(MESSAGE_IDS_FILE, 'w') as out_f: yaml.dump([], out_f)
+                return
+
+        if not messages_to_process:
+            logger.info(f"Файл {MESSAGE_IDS_FILE} не содержит сообщений для удаления.")
+            return
+
+        remaining_messages_to_delete = []
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        
+        for msg_info in messages_to_process:
+            message_id = msg_info.get('message_id')
+            sent_at_str = msg_info.get('sent_at')
+
+            if not message_id:
+                logger.warning(f"Найден элемент без 'message_id' в {MESSAGE_IDS_FILE}: {msg_info}. Пропускаем.")
+                continue
+
+            # Проверка возраста сообщения (если sent_at доступно)
+            if sent_at_str:
                 try:
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                    logger.info(f"Сообщение {message_id} удалено.")
-                except BadRequest as e:
-                    if "message to delete not found" in str(e).lower() or "message can't be deleted" in str(e).lower():
-                        logger.warning(f"Не удалось удалить {message_id} (уже удалено).")
-                    else: raise e
-                await asyncio.sleep(1)
+                    sent_at = datetime.datetime.fromisoformat(sent_at_str)
+                    age_hours = (now_utc - sent_at).total_seconds() / 3600
+                    if age_hours > 47.5: # Чуть меньше 48 часов, чтобы быть уверенным
+                        logger.warning(f"Сообщение {message_id} отправлено более 47.5 часов назад ({age_hours:.1f}ч). Telegram может запретить удаление.")
+                        # Мы все равно пытаемся удалить, но уже с пониманием возможной неудачи.
+                        # Если сообщение очень старое, и его не удается удалить,
+                        # оно не будет добавлено в remaining_messages_to_delete, чтобы не спамить попытками.
+                        # Если вы хотите, чтобы оно оставалось и логировалось как "неудаленное",
+                        # тогда добавьте его в remaining_messages_to_delete.
+                        # В текущей логике, если оно старше 47.5 часов и не удалилось, оно "исчезнет" из файла.
+                        pass 
+                except ValueError:
+                    logger.warning(f"Не удалось распарсить 'sent_at' для сообщения {message_id}: {sent_at_str}. Пробуем удалить.")
+
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                logger.info(f"Сообщение {message_id} удалено.")
+            except BadRequest as e:
+                if "message to delete not found" in str(e).lower() or "message can't be deleted" in str(e).lower():
+                    logger.warning(f"Сообщение {message_id} не удалось удалить (уже удалено или не существует).")
+                else:
+                    logger.error(f"Непредвиденная ошибка при удалении сообщения {message_id}: {e}")
+                    remaining_messages_to_delete.append(msg_info) # Добавляем обратно для следующей попытки
+            except Exception as e:
+                logger.error(f"Неизвестная ошибка при удалении сообщения {message_id}: {e}")
+                remaining_messages_to_delete.append(msg_info) # Добавляем обратно для следующей попытки
+            await asyncio.sleep(0.5)
+
+        # Перезаписываем файл с оставшимися ID или очищаем его
+        if remaining_messages_to_delete:
+            logger.warning(f"Некоторые сообщения не были удалены и остаются в {MESSAGE_IDS_FILE} для повторной попытки: {[m.get('message_id') for m in remaining_messages_to_delete]}")
+            with open(MESSAGE_IDS_FILE, 'w') as out_f:
+                yaml.dump(remaining_messages_to_delete, out_f, default_flow_style=False)
+        else:
+            logger.info(f"Все старые сообщения из {MESSAGE_IDS_FILE} были обработаны. Файл будет очищен.")
+            with open(MESSAGE_IDS_FILE, 'w') as out_f:
+                yaml.dump([], out_f)
+        
     except Exception as e:
-        logger.error(f"Ошибка при удалении: {e}")
+        logger.error(f"Критическая ошибка при обработке message_ids.yml: {e}")
+        # В случае критической ошибки, все равно очищаем файл, чтобы избежать зацикливания
+        with open(MESSAGE_IDS_FILE, 'w') as out_f:
+            yaml.dump([], out_f)
+        logger.warning(f"Файл {MESSAGE_IDS_FILE} был принудительно очищен из-за ошибки.")
 
 async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optional[Dict]:
     params = {"lat": coords["lat"], "lon": coords["lon"], "appid": api_key, "units": "metric", "lang": "ru", "exclude": "minutely,alerts"}
@@ -65,7 +125,6 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# ИЗМЕНЕНО: Возвращена лучшая версия прогноза с днями недели
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -75,7 +134,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
 
         rainy_hours_data = []
         for hour in hourly[:48]:
-            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
+            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35: # pop > 35%
                 rainy_hours_data.append(hour)
 
         if not rainy_hours_data: return ["Осадков не ожидается"]
@@ -90,7 +149,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
             i += 1
         
         output_lines = []
-        for start_hour, end_hour in intervals[:2]:
+        for start_hour, end_hour in intervals[:2]: # Ограничиваемся двумя интервалами
             start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
             end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
             
@@ -103,16 +162,16 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
             local_start = start_dt + datetime.timedelta(seconds=offset)
-            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
+            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset) # Для отображения конца часа
 
             start_day_abbr = DAY_ABBREVIATIONS[local_start.weekday()]
             end_day_abbr = DAY_ABBREVIATIONS[local_end_display.weekday()]
 
             if local_start.day == local_end_display.day or local_end_display.strftime('%H:%M') == '00:00':
-                 if local_end_display.strftime('%H:%M') == '00:00':
-                     end_time_str = "24:00"
-                 else:
-                     end_time_str = local_end_display.strftime('%H:%M')
+                 # Если конец часа - полночь, отображаем как 24:00
+                 end_time_str = local_end_display.strftime('%H:%M')
+                 if end_time_str == '00:00':
+                     end_time_str = '24:00'
                  output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_time_str} ({intensity_description})")
             else:
                 output_lines.append(f"• {start_day_abbr}, {local_start.strftime('%H:%M')} - {end_day_abbr}, {local_end_display.strftime('%H:%M')} ({intensity_description})")
@@ -211,16 +270,16 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
     
     hold_frames = fps * hold_duration_sec
     try:
-        # ИЗМЕНЕНО: Добавлены параметры для лучшего сжатия
         params = {
             'fps': fps,
             'codec': 'libx264',
-            'quality': 8,
+            # 'quality': 8, # Закомментировано, если используем -crf
             'pixelformat': 'yuv420p',
             'output_params': [
                 '-an',                # Убрать звук
                 '-preset', 'slow',    # Использовать медленный пресет для лучшего сжатия
-                '-tune', 'animation'  # Оптимизировать для анимации
+                '-tune', 'animation', # Оптимизировать для анимации
+                '-crf', '28'          # Constant Rate Factor (CRF) для контроля качества и размера. 23 - по умолчанию, 28 - среднее сжатие.
             ]
         }
         
@@ -239,8 +298,37 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
         return ""
 
 def save_message_id(message_id: int):
-    new_message = [{'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}]
-    with open(MESSAGE_IDS_FILE, 'w') as f: yaml.dump(new_message, f)
+    messages_list = []
+    # Всегда читаем, если файл есть и он не пустой
+    if os.path.exists(MESSAGE_IDS_FILE) and os.path.getsize(MESSAGE_IDS_FILE) > 0:
+        try:
+            with open(MESSAGE_IDS_FILE, 'r') as f:
+                loaded_data = yaml.safe_load(f)
+                if isinstance(loaded_data, list):
+                    messages_list = loaded_data
+                else:
+                    logger.warning(f"Файл {MESSAGE_IDS_FILE} содержит некорректные данные (не список), начинаем с чистого листа.")
+        except yaml.YAMLError:
+            logger.warning(f"Файл {MESSAGE_IDS_FILE} поврежден, начинаем с чистого листа.")
+        except Exception as e: # Общая ошибка чтения
+            logger.error(f"Ошибка при чтении {MESSAGE_IDS_FILE}: {e}, начинаем с чистого листа.")
+
+    new_message_entry = {'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    
+    # Проверяем, что ID не дублируется (хотя при нормальной работе каждый ID уникален)
+    if not any(item.get('message_id') == message_id for item in messages_list):
+        messages_list.append(new_message_entry)
+        logger.info(f"Добавлен ID {message_id} в список для сохранения.")
+    else:
+        logger.warning(f"ID {message_id} уже присутствует в списке, не добавляем повторно.")
+
+    # Записываем обновленный список в файл
+    try:
+        with open(MESSAGE_IDS_FILE, 'w') as f:
+            yaml.dump(messages_list, f, default_flow_style=False)
+        logger.info(f"Файл {MESSAGE_IDS_FILE} успешно обновлен.")
+    except Exception as e:
+        logger.error(f"ОШИБКА: Не удалось записать в {MESSAGE_IDS_FILE}: {e}")
 
 # --- Вспомогательные функции ---
 def get_wind_direction_abbr(deg: int) -> str:
@@ -291,7 +379,10 @@ async def main():
         logger.error("ОШИБКА: Отсутствуют переменные окружения.")
         return
     bot = Bot(token=telegram_bot_token)
+
+    # Шаг 1: Удаляем старые сообщения
     await delete_old_messages(bot, target_chat_id)
+    
     frames = []
     for city_name, coords in CITIES.items():
         logger.info(f"Обработка города: {city_name}...")
@@ -303,27 +394,46 @@ async def main():
         else:
             logger.warning(f"Нет данных для {city_name}.")
         await asyncio.sleep(0.5)
+
     if not frames:
-        logger.error("Не удалось создать ни одного кадра.")
+        logger.error("Не удалось создать ни одного кадра для видео.")
         return
+
     video_path = "weather_report.mp4"
     create_weather_video(frames, video_path)
+
+    message_sent_successfully = False
+    new_message_id = None
+    
     if os.path.exists(video_path):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(AD_BUTTON_TEXT, url=AD_BUTTON_URL), InlineKeyboardButton(NEWS_BUTTON_TEXT, url=NEWS_BUTTON_URL)]])
         try:
             with open(video_path, 'rb') as video_file:
                 message = await bot.send_animation(
-                    chat_id=target_chat_id, animation=video_file,
-                    disable_notification=True, reply_markup=keyboard
+                    chat_id=target_chat_id, 
+                    animation=video_file,
+                    disable_notification=True, 
+                    reply_markup=keyboard,
+                    timeout=120 # Увеличиваем таймаут для отправки
                 )
-            save_message_id(message.message_id)
-            logger.info(f"Анимация MP4 отправлена. ID: {message.message_id}.")
+            new_message_id = message.message_id
+            logger.info(f"Анимация MP4 отправлена. ID: {new_message_id}.")
+            message_sent_successfully = True
         except Exception as e:
             logger.error(f"Ошибка при отправке MP4: {e}")
         finally:
-            if os.path.exists(video_path): os.remove(video_path)
+            # Шаг 2.1: Сохраняем ID нового сообщения, если оно было успешно получено
+            if message_sent_successfully and new_message_id:
+                save_message_id(new_message_id)
+            elif not message_sent_successfully:
+                logger.warning("Новое сообщение не было отправлено или его ID не получен, запись не будет сохранена.")
+
+            # Шаг 2.2: Удаляем временный видеофайл
+            if os.path.exists(video_path): 
+                os.remove(video_path)
     else:
-        logger.error("Файл MP4 не был создан.")
+        logger.error("Файл MP4 не был создан, отправка невозможна.")
+    
     logger.info("--- Завершение работы ---")
 
 if __name__ == "__main__":
