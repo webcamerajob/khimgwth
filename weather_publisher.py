@@ -74,12 +74,6 @@ async def delete_old_messages(bot: Bot, chat_id: str):
                     age_hours = (now_utc - sent_at).total_seconds() / 3600
                     if age_hours > 47.5: # Чуть меньше 48 часов, чтобы быть уверенным
                         logger.warning(f"Сообщение {message_id} отправлено более 47.5 часов назад ({age_hours:.1f}ч). Telegram может запретить удаление.")
-                        # Мы все равно пытаемся удалить, но уже с пониманием возможной неудачи.
-                        # Если сообщение очень старое, и его не удается удалить,
-                        # оно не будет добавлено в remaining_messages_to_delete, чтобы не спамить попытками.
-                        # Если вы хотите, чтобы оно оставалось и логировалось как "неудаленное",
-                        # тогда добавьте его в remaining_messages_to_delete.
-                        # В текущей логике, если оно старше 47.5 часов и не удалилось, оно "исчезнет" из файла.
                         pass 
                 except ValueError:
                     logger.warning(f"Не удалось распарсить 'sent_at' для сообщения {message_id}: {sent_at_str}. Пробуем удалить.")
@@ -92,13 +86,12 @@ async def delete_old_messages(bot: Bot, chat_id: str):
                     logger.warning(f"Сообщение {message_id} не удалось удалить (уже удалено или не существует).")
                 else:
                     logger.error(f"Непредвиденная ошибка при удалении сообщения {message_id}: {e}")
-                    remaining_messages_to_delete.append(msg_info) # Добавляем обратно для следующей попытки
+                    remaining_messages_to_delete.append(msg_info)
             except Exception as e:
                 logger.error(f"Неизвестная ошибка при удалении сообщения {message_id}: {e}")
-                remaining_messages_to_delete.append(msg_info) # Добавляем обратно для следующей попытки
+                remaining_messages_to_delete.append(msg_info)
             await asyncio.sleep(0.5)
 
-        # Перезаписываем файл с оставшимися ID или очищаем его
         if remaining_messages_to_delete:
             logger.warning(f"Некоторые сообщения не были удалены и остаются в {MESSAGE_IDS_FILE} для повторной попытки: {[m.get('message_id') for m in remaining_messages_to_delete]}")
             with open(MESSAGE_IDS_FILE, 'w') as out_f:
@@ -110,7 +103,6 @@ async def delete_old_messages(bot: Bot, chat_id: str):
         
     except Exception as e:
         logger.error(f"Критическая ошибка при обработке message_ids.yml: {e}")
-        # В случае критической ошибки, все равно очищаем файл, чтобы избежать зацикливания
         with open(MESSAGE_IDS_FILE, 'w') as out_f:
             yaml.dump([], out_f)
         logger.warning(f"Файл {MESSAGE_IDS_FILE} был принудительно очищен из-за ошибки.")
@@ -134,7 +126,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
 
         rainy_hours_data = []
         for hour in hourly[:48]:
-            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35: # pop > 35%
+            if hour.get('dt', 0) > current_ts and hour.get('pop', 0) > 0.35:
                 rainy_hours_data.append(hour)
 
         if not rainy_hours_data: return ["Осадков не ожидается"]
@@ -149,7 +141,7 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
             i += 1
         
         output_lines = []
-        for start_hour, end_hour in intervals[:2]: # Ограничиваемся двумя интервалами
+        for start_hour, end_hour in intervals[:2]:
             start_dt = datetime.datetime.fromtimestamp(start_hour['dt'], tz=datetime.timezone.utc)
             end_dt = datetime.datetime.fromtimestamp(end_hour['dt'], tz=datetime.timezone.utc)
             
@@ -162,13 +154,12 @@ def format_precipitation_forecast(weather_data: Dict) -> List[str]:
                     intensity_description = hour.get('weather', [{}])[0].get('description', 'Дождь').capitalize()
 
             local_start = start_dt + datetime.timedelta(seconds=offset)
-            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset) # Для отображения конца часа
+            local_end_display = end_dt + datetime.timedelta(hours=1) + datetime.timedelta(seconds=offset)
 
             start_day_abbr = DAY_ABBREVIATIONS[local_start.weekday()]
             end_day_abbr = DAY_ABBREVIATIONS[local_end_display.weekday()]
 
             if local_start.day == local_end_display.day or local_end_display.strftime('%H:%M') == '00:00':
-                 # Если конец часа - полночь, отображаем как 24:00
                  end_time_str = local_end_display.strftime('%H:%M')
                  if end_time_str == '00:00':
                      end_time_str = '24:00'
@@ -273,13 +264,12 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
         params = {
             'fps': fps,
             'codec': 'libx264',
-            # 'quality': 8, # Закомментировано, если используем -crf
             'pixelformat': 'yuv420p',
             'output_params': [
-                '-an',                # Убрать звук
-                '-preset', 'slow',    # Использовать медленный пресет для лучшего сжатия
-                '-tune', 'animation', # Оптимизировать для анимации
-                '-crf', '28'          # Constant Rate Factor (CRF) для контроля качества и размера. 23 - по умолчанию, 28 - среднее сжатие.
+                '-an',
+                '-preset', 'slow',
+                '-tune', 'animation',
+                '-crf', '28'
             ]
         }
         
@@ -299,7 +289,6 @@ def create_weather_video(frames: List[Image.Image], output_path: str = "weather_
 
 def save_message_id(message_id: int):
     messages_list = []
-    # Всегда читаем, если файл есть и он не пустой
     if os.path.exists(MESSAGE_IDS_FILE) and os.path.getsize(MESSAGE_IDS_FILE) > 0:
         try:
             with open(MESSAGE_IDS_FILE, 'r') as f:
@@ -310,19 +299,17 @@ def save_message_id(message_id: int):
                     logger.warning(f"Файл {MESSAGE_IDS_FILE} содержит некорректные данные (не список), начинаем с чистого листа.")
         except yaml.YAMLError:
             logger.warning(f"Файл {MESSAGE_IDS_FILE} поврежден, начинаем с чистого листа.")
-        except Exception as e: # Общая ошибка чтения
+        except Exception as e:
             logger.error(f"Ошибка при чтении {MESSAGE_IDS_FILE}: {e}, начинаем с чистого листа.")
 
     new_message_entry = {'message_id': message_id, 'sent_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
     
-    # Проверяем, что ID не дублируется (хотя при нормальной работе каждый ID уникален)
     if not any(item.get('message_id') == message_id for item in messages_list):
         messages_list.append(new_message_entry)
         logger.info(f"Добавлен ID {message_id} в список для сохранения.")
     else:
         logger.warning(f"ID {message_id} уже присутствует в списке, не добавляем повторно.")
 
-    # Записываем обновленный список в файл
     try:
         with open(MESSAGE_IDS_FILE, 'w') as f:
             yaml.dump(messages_list, f, default_flow_style=False)
@@ -413,22 +400,27 @@ async def main():
                     chat_id=target_chat_id, 
                     animation=video_file,
                     disable_notification=True, 
-                    reply_markup=keyboard,
-                    timeout=120 # Увеличиваем таймаут для отправки
+                    reply_markup=keyboard
+                    # Удаленный аргумент timeout=120
                 )
             new_message_id = message.message_id
             logger.info(f"Анимация MP4 отправлена. ID: {new_message_id}.")
             message_sent_successfully = True
+
+            # --- Искусственный таймаут здесь ---
+            # Допустим, вы хотите подождать 10 секунд после отправки анимации.
+            await asyncio.sleep(10) 
+            logger.info("Пауза в 10 секунд после отправки анимации завершена.")
+            # --- Конец искусственного таймаута ---
+
         except Exception as e:
             logger.error(f"Ошибка при отправке MP4: {e}")
         finally:
-            # Шаг 2.1: Сохраняем ID нового сообщения, если оно было успешно получено
             if message_sent_successfully and new_message_id:
                 save_message_id(new_message_id)
             elif not message_sent_successfully:
                 logger.warning("Новое сообщение не было отправлено или его ID не получен, запись не будет сохранена.")
 
-            # Шаг 2.2: Удаляем временный видеофайл
             if os.path.exists(video_path): 
                 os.remove(video_path)
     else:
