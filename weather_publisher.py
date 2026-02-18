@@ -3,7 +3,7 @@ import requests
 import asyncio
 import os
 import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import BadRequest
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # --- Константы и конфигурация ---
 OPENWEATHER_API_URL = "https://api.openweathermap.org/data/3.0/onecall"
-AIR_POLLUTION_API_URL = "http://api.openweathermap.org/data/2.5/air_pollution"  # URL для экологии
+AIR_POLLUTION_API_URL = "http://api.openweathermap.org/data/2.5/air_pollution"
 
 CITIES = {
     "Пномпень": {"lat": 11.5564, "lon": 104.9282},
@@ -129,15 +129,17 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ POLLUTION ---
-async def get_air_quality(coords: Dict[str, float], api_key: str) -> Optional[int]:
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ POLLUTION (Возвращает кортеж: индекс AQI, PM2.5) ---
+async def get_air_quality(coords: Dict[str, float], api_key: str) -> Optional[Tuple[int, float]]:
     params = {"lat": coords["lat"], "lon": coords["lon"], "appid": api_key}
     try:
         response = requests.get(AIR_POLLUTION_API_URL, params=params)
         response.raise_for_status()
         data = response.json()
         if 'list' in data and len(data['list']) > 0:
-            return data['list'][0]['main']['aqi'] # Возвращает 1, 2, 3, 4 или 5
+            aqi = data['list'][0]['main']['aqi']
+            pm2_5 = data['list'][0]['components']['pm2_5']
+            return aqi, pm2_5
         return None
     except requests.exceptions.RequestException as e:
         logger.error(f"Ошибка при запросе качества воздуха: {e}")
@@ -213,7 +215,7 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines.append(current_line)
     return "\n".join(lines)
 
-def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str], aqi_index: Optional[int]) -> Optional[Image.Image]:
+def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str], aqi_data: Optional[Tuple[int, float]]) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -238,17 +240,19 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         
         weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
 
-        # Формирование строки AQI
+        # Формирование строки AQI с PM2.5
         aqi_str = "Нет данных"
-        if aqi_index is not None:
+        if aqi_data is not None:
+            aqi_index, pm25_val = aqi_data
             desc = AQI_INFO.get(aqi_index, "Неизвестно")
-            aqi_str = f"{aqi_index} из 5 - {desc}"
+            # Добавлено отображение PM2.5 в скобках
+            aqi_str = f"{aqi_index} из 5 - {desc} (PM2.5: {pm25_val:.1f})"
 
         main_info_lines = [
             new_title,
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
             weather_description_and_humidity,
-            f"Загрязнение: {aqi_str}", # Добавлено ПЕРЕД ветром
+            f"Качество воздуха: {aqi_str}", 
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
@@ -408,13 +412,13 @@ async def main():
         logger.info(f"Обработка города: {city_name}...")
         weather_data = await get_current_weather(coords, openweather_api_key)
         
-        # Получаем данные о загрязнении
-        aqi_index = await get_air_quality(coords, openweather_api_key)
+        # Получаем данные о Качество воздуха (теперь это кортеж или None)
+        aqi_result = await get_air_quality(coords, openweather_api_key)
 
         if weather_data:
             precipitation_forecast_lines = format_precipitation_forecast(weather_data)
-            # Передаем aqi_index в функцию создания кадра
-            frame = create_weather_frame(city_name, weather_data, precipitation_forecast_lines, aqi_index)
+            # Передаем aqi_result (tuple) в функцию создания кадра
+            frame = create_weather_frame(city_name, weather_data, precipitation_forecast_lines, aqi_result)
             if frame: frames.append(frame)
         else:
             logger.warning(f"Нет данных для {city_name}.")
@@ -445,8 +449,7 @@ async def main():
             logger.info(f"Анимация MP4 отправлена. ID: {new_message_id}.")
             message_sent_successfully = True
 
-            # --- Искусственный таймаут здесь ---
-            # Допустим, вы хотите подождать 10 секунд после отправки анимации.
+            # --- Искусственный таймаут ---
             await asyncio.sleep(10) 
             logger.info("Пауза в 10 секунд после отправки анимации завершена.")
             # --- Конец искусственного таймаута ---
