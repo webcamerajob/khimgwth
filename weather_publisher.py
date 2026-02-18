@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # --- Константы и конфигурация ---
 OPENWEATHER_API_URL = "https://api.openweathermap.org/data/3.0/onecall"
+AIR_POLLUTION_API_URL = "http://api.openweathermap.org/data/2.5/air_pollution"  # URL для экологии
+
 CITIES = {
     "Пномпень": {"lat": 11.5564, "lon": 104.9282},
     "Сиануквиль": {"lat": 10.6276, "lon": 103.5224},
@@ -31,8 +33,18 @@ NEWS_BUTTON_TEXT = "Обмен 💵"
 NEWS_BUTTON_URL = "https://t.me/mister1dollar"
 BACKGROUNDS_FOLDER = "backgrounds2"
 MESSAGE_IDS_FILE = "message_ids.yml"
+
 DAY_ABBREVIATIONS = {0: 'пн', 1: 'вт', 2: 'ср', 3: 'чт', 4: 'пт', 5: 'сб', 6: 'вс'}
 DAYS_OF_WEEK_ACCUSATIVE = {0: 'понедельник', 1: 'вторник', 2: 'среду', 3: 'четверг', 4: 'пятницу', 5: 'субботу', 6: 'воскресенье'}
+
+# Словарь описания качества воздуха
+AQI_INFO = {
+    1: "Очень хорошо",
+    2: "Хорошо",
+    3: "Умеренно",
+    4: "Плохо",
+    5: "Опасно"
+}
 
 # --- Функции ---
 
@@ -117,6 +129,20 @@ async def get_current_weather(coords: Dict[str, float], api_key: str) -> Optiona
         logger.error(f"Ошибка при запросе погоды: {e}")
         return None
 
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ POLLUTION ---
+async def get_air_quality(coords: Dict[str, float], api_key: str) -> Optional[int]:
+    params = {"lat": coords["lat"], "lon": coords["lon"], "appid": api_key}
+    try:
+        response = requests.get(AIR_POLLUTION_API_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if 'list' in data and len(data['list']) > 0:
+            return data['list'][0]['main']['aqi'] # Возвращает 1, 2, 3, 4 или 5
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при запросе качества воздуха: {e}")
+        return None
+
 def format_precipitation_forecast(weather_data: Dict) -> List[str]:
     try:
         hourly = weather_data.get('hourly', [])
@@ -187,7 +213,7 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
     lines.append(current_line)
     return "\n".join(lines)
 
-def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str]) -> Optional[Image.Image]:
+def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forecast_lines: List[str], aqi_index: Optional[int]) -> Optional[Image.Image]:
     background_path = get_random_background_image(city_name)
     if not background_path: return None
     try:
@@ -212,10 +238,17 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         
         weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
 
+        # Формирование строки AQI
+        aqi_str = "Нет данных"
+        if aqi_index is not None:
+            desc = AQI_INFO.get(aqi_index, "Неизвестно")
+            aqi_str = f"{aqi_index} из 5 - {desc}"
+
         main_info_lines = [
             new_title,
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
             weather_description_and_humidity,
+            f"Загрязнение: {aqi_str}", # Добавлено ПЕРЕД ветром
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
@@ -374,9 +407,14 @@ async def main():
     for city_name, coords in CITIES.items():
         logger.info(f"Обработка города: {city_name}...")
         weather_data = await get_current_weather(coords, openweather_api_key)
+        
+        # Получаем данные о загрязнении
+        aqi_index = await get_air_quality(coords, openweather_api_key)
+
         if weather_data:
             precipitation_forecast_lines = format_precipitation_forecast(weather_data)
-            frame = create_weather_frame(city_name, weather_data, precipitation_forecast_lines)
+            # Передаем aqi_index в функцию создания кадра
+            frame = create_weather_frame(city_name, weather_data, precipitation_forecast_lines, aqi_index)
             if frame: frames.append(frame)
         else:
             logger.warning(f"Нет данных для {city_name}.")
