@@ -240,19 +240,21 @@ def create_weather_frame(city_name: str, weather_data: Dict, precipitation_forec
         
         weather_description_and_humidity = f"{current['weather'][0]['description'].capitalize()}, влажность: {current['humidity']}%"
 
-        # Формирование строки AQI с PM2.5
-        aqi_str = "Нет данных"
+        # Формирование строк AQI и PM2.5 отдельно
+        aqi_str = "Загрязнение воздуха: Нет данных"
+        pm_str = "PM2.5: Нет данных"
         if aqi_data is not None:
             aqi_index, pm25_val = aqi_data
             desc = AQI_INFO.get(aqi_index, "Неизвестно")
-            # Добавлено отображение PM2.5 в скобках
-            aqi_str = f"{aqi_index} из 5 - {desc} (PM2.5: {pm25_val:.1f})"
+            aqi_str = f"Загрязнение воздуха: {aqi_index} из 5 — {desc}"
+            pm_str = f"PM2.5: {pm25_val:.1f} мкг/м³"
 
         main_info_lines = [
             new_title,
             f"Температура: {current['temp']:.1f}°C (ощущ. {current['feels_like']:.1f}°C)",
             weather_description_and_humidity,
-            f"Качество воздуха: {aqi_str}", 
+            aqi_str,
+            pm_str, 
             f"Ветер: {get_wind_direction_abbr(current['wind_deg'])}, {current['wind_speed']:.1f} м/с",
         ]
         
