@@ -1,4 +1,4 @@
-Name: Publish Weather Updates
+name: Publish Weather Updates
 
 on:
   workflow_dispatch: # Позволяет запускать рабочий процесс вручную
